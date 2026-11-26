@@ -48,6 +48,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "https://overpass-api.de/api/interpreter",
             "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter",
         ],
         alias="RADAR_OVERPASS_URLS",
     )
@@ -69,6 +70,12 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = Field(None, alias="RADAR_OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", alias="RADAR_OPENAI_BASE_URL")
     openai_model: str | None = Field(None, alias="RADAR_OPENAI_MODEL")
+
+    # Set when RADAR earns money (ads, subscriptions, commissions). Providers whose free tier
+    # is non-commercial are then skipped unless their URL points at a self-hosted instance.
+    commercial: bool = Field(False, alias="RADAR_COMMERCIAL")
+    overpass_self_hosted: bool = Field(False, alias="RADAR_OVERPASS_SELF_HOSTED")
+    transitous_self_hosted: bool = Field(False, alias="RADAR_TRANSITOUS_SELF_HOSTED")
 
     # Development fixtures. Never enabled in prod; results are always labeled.
     enable_fixtures: bool = Field(False, alias="RADAR_ENABLE_FIXTURES")

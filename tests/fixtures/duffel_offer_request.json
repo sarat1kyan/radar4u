@@ -1,0 +1,52 @@
+{
+  "data": {
+    "id": "orq_0000AAAA",
+    "live_mode": false,
+    "offers": [
+      {
+        "id": "off_0000AAAA1",
+        "total_amount": "182.40",
+        "total_currency": "EUR",
+        "expires_at": "2026-12-01T10:00:00Z",
+        "owner": {"name": "Duffel Airways", "iata_code": "ZZ"},
+        "passengers": [{"id": "pas_0001", "type": "adult"}],
+        "conditions": {"refund_before_departure": {"allowed": false}, "change_before_departure": {"allowed": true}},
+        "slices": [{
+          "origin": {"iata_code": "EVN", "time_zone": "Asia/Yerevan"},
+          "destination": {"iata_code": "FCO", "time_zone": "Europe/Rome"},
+          "duration": "PT4H30M",
+          "segments": [{
+            "origin": {"iata_code": "EVN", "name": "Zvartnots International Airport", "time_zone": "Asia/Yerevan"},
+            "destination": {"iata_code": "FCO", "name": "Leonardo da Vinci", "time_zone": "Europe/Rome"},
+            "departing_at": "2026-12-05T08:00:00",
+            "arriving_at": "2026-12-05T10:30:00",
+            "duration": "PT4H30M",
+            "marketing_carrier": {"name": "Duffel Airways", "iata_code": "ZZ"},
+            "marketing_carrier_flight_number": "101",
+            "passengers": [{"baggages": [{"type": "checked", "quantity": 1}]}]
+          }]
+        }]
+      },
+      {
+        "id": "off_0000AAAA2",
+        "total_amount": "121.00",
+        "total_currency": "EUR",
+        "passengers": [{"id": "pas_0001", "type": "adult"}],
+        "slices": [{
+          "origin": {"iata_code": "EVN", "time_zone": "Asia/Yerevan"},
+          "destination": {"iata_code": "FCO", "time_zone": "Europe/Rome"},
+          "segments": [
+            {"origin": {"iata_code": "EVN", "time_zone": "Asia/Yerevan"},
+             "destination": {"iata_code": "VIE", "time_zone": "Europe/Vienna"},
+             "departing_at": "2026-12-05T04:00:00", "arriving_at": "2026-12-05T05:50:00",
+             "marketing_carrier": {"name": "Duffel Airways", "iata_code": "ZZ"}, "marketing_carrier_flight_number": "7"},
+            {"origin": {"iata_code": "VIE", "time_zone": "Europe/Vienna"},
+             "destination": {"iata_code": "FCO", "time_zone": "Europe/Rome"},
+             "departing_at": "2026-12-05T07:10:00", "arriving_at": "2026-12-05T08:45:00",
+             "marketing_carrier": {"name": "Duffel Airways", "iata_code": "ZZ"}, "marketing_carrier_flight_number": "8"}
+          ]
+        }]
+      }
+    ]
+  }
+}

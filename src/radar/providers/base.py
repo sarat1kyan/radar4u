@@ -68,6 +68,8 @@ class Provider(ABC):
     name: str = "provider"
     display_name: str = "Provider"
     access: AccessLevel = AccessLevel.PUBLIC
+    # False when the provider's terms forbid commercial use of its free tier.
+    commercial_use_allowed: bool = True
     docs_url: str | None = None
     attribution: str | None = None
     capabilities: tuple[Capability, ...] = ()
@@ -99,4 +101,5 @@ class Provider(ABC):
             "domains": sorted({c.domain.value for c in self.capabilities}),
             "booking": any(c.supports_booking for c in self.capabilities),
             "monitoring": any(c.monitoring_allowed for c in self.capabilities),
+            "commercial_use_allowed": self.commercial_use_allowed,
         }

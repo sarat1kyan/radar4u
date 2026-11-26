@@ -106,6 +106,7 @@ class ProviderHttp:
     burst: int = 5
     max_retries: int = 2
     timeout_s: float | None = None
+    connect_timeout_s: float = 6.0
     headers: Mapping[str, str] = field(default_factory=dict)
     client: httpx.AsyncClient | None = None
 
@@ -118,7 +119,7 @@ class ProviderHttp:
         if self.client is None:
             s = get_settings()
             self.client = httpx.AsyncClient(
-                timeout=self.timeout_s or s.http_timeout_s,
+                timeout=httpx.Timeout(self.timeout_s or s.http_timeout_s, connect=self.connect_timeout_s),
                 headers={"User-Agent": s.http_user_agent, **dict(self.headers)},
                 follow_redirects=True,
             )
