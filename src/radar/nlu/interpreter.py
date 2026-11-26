@@ -56,7 +56,7 @@ class Interpretation:
 
 
 def build_llm(settings: Settings) -> LLMBackend | None:
-    if settings.nlu_backend == "anthropic" and settings.anthropic_api_key:
+    if settings.nlu_backend == "anthropic" and settings.anthropic_api_key and settings.anthropic_model:
         from radar.nlu.llm.anthropic_backend import AnthropicBackend
 
         return AnthropicBackend(settings.anthropic_api_key.get_secret_value(), settings.anthropic_model)

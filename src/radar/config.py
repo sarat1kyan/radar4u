@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # Language understanding. "rules" works offline; LLM backends are optional.
     nlu_backend: Literal["rules", "anthropic", "openai"] = Field("rules", alias="RADAR_NLU_BACKEND")
     anthropic_api_key: SecretStr | None = Field(None, alias="RADAR_ANTHROPIC_API_KEY")
-    anthropic_model: str = Field("claude-opus-5-5", alias="RADAR_ANTHROPIC_MODEL")
+    anthropic_model: str | None = Field(None, alias="RADAR_ANTHROPIC_MODEL")
     openai_api_key: SecretStr | None = Field(None, alias="RADAR_OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", alias="RADAR_OPENAI_BASE_URL")
     openai_model: str | None = Field(None, alias="RADAR_OPENAI_MODEL")
