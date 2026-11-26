@@ -38,7 +38,7 @@ def fast_http(name):
 def test_overpass_query_has_cuisine_filter_and_radius():
     i = intent("sushi restaurant in Yerevan")
     q = build_query(i, 40.18, 44.51, 5000, 40)
-    assert '["cuisine"~"sushi",i]' in q and "around:5000,40.180000,44.510000" in q
+    assert '["cuisine"~"sushi",i]' in q and "[bbox:40.13508,44.45121,40.22492,44.56879]" in q
     assert q.startswith("[out:json]")
 
 

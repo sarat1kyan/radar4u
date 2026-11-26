@@ -222,8 +222,6 @@ def coverage_text(o: SearchOutcome, lang: str) -> str:
         details.append(
             i18n.t("search.coverage.non_commercial", lang, names=", ".join(by_reason["non_commercial_terms"]))
         )
-    if o.partner_only:
-        details.append(i18n.t("search.coverage.partner_only", lang, names=", ".join(dict.fromkeys(o.partner_only))))
     return i18n.t("search.no_coverage", lang, details=" ".join(details))
 
 

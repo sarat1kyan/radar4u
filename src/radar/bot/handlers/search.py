@@ -197,6 +197,30 @@ async def load_outcome(app: App, user: User, sid: int) -> SearchOutcome | None:
     return render.outcome_from_session(SearchIntent.model_validate(row.intent), row.results, row.summary)
 
 
+@router.callback_query(F.data.regexp(r"^tp:\d+:[+-]$"))
+async def on_time_shift(cb: CallbackQuery, app: App, user: User) -> None:
+    """Earlier / Later departures: shift the window by two hours and search again in place."""
+    _, sid, sign = (cb.data or "").split(":")
+    async with app.db.session() as s:
+        row = await repo.get_search(s, user, int(sid))
+    if row is None or not isinstance(cb.message, Message):
+        await cb.answer(i18n.t("error.not_found", user.language), show_alert=True)
+        return
+    intent = SearchIntent.model_validate(row.intent)
+    delta = timedelta(hours=2 if sign == "+" else -2)
+    ref = intent.origin or intent.location
+    zone = ref.place.timezone if ref and ref.place else user.timezone
+    now = now_in(zone).replace(second=0, microsecond=0)
+    base = intent.when.start if intent.when and intent.when.start else now
+    base_end = intent.when.end if intent.when and intent.when.end else base + timedelta(hours=4)
+    start = max(now, base + delta) if sign == "-" else base + delta
+    end = base_end + delta
+    intent.when = DateWindow(start=start, end=max(start, end))
+    intent.arrive_by = False
+    await cb.answer()
+    await execute(cb.message, app, user, intent, edit_message=cb.message)
+
+
 @router.callback_query(kb.PageCb.filter())
 async def on_page(cb: CallbackQuery, callback_data: kb.PageCb, app: App, user: User) -> None:
     outcome = await load_outcome(app, user, callback_data.s)

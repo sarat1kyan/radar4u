@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "Escapada urbana",
   "cat.plan.evening_date": "Cita por la noche",
   "cat.plan.day_trip": "Excursión de un día",
-  "cat.plan.birthday": "Cumpleaños"
+  "cat.plan.birthday": "Cumpleaños",
+  "status.open_until": "Abierto hasta las {time}",
+  "status.open": "Abierto",
+  "status.closed_opens": "Cerrado, abre a las {time}",
+  "status.closed": "Cerrado",
+  "status.open_24_7": "Abierto 24/7",
+  "search.edit": "Editar búsqueda",
+  "search.earlier": "Antes",
+  "search.later": "Más tarde",
+  "home.recent": "Búsquedas recientes",
+  "home.near_me_now": "Abierto cerca",
+  "search.share_location": "Comparte tu ubicación para ver los lugares más cercanos.",
+  "result.open_count": "{count, plural, one {# abierto ahora} other {# abiertos ahora}}",
+  "table.status": "Ahora"
 }

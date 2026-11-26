@@ -17,10 +17,11 @@ from typing import Any
 
 from radar.core.money import ConvertedMoney
 from radar.core.provenance import Freshness, Tri
-from radar.domain.common import SortMode
+from radar.domain.common import Domain, SortMode
 from radar.domain.intents import SearchIntent
 from radar.domain.results import Availability, Result
 from radar.search.filters import MatchReport, Tier
+from radar.search.status import open_status, reference_time
 
 FRESHNESS_SCORE = {
     Freshness.LIVE: 1.0,
@@ -35,6 +36,9 @@ WEIGHTS: dict[SortMode, dict[str, float]] = {
     SortMode.BEST: {
         "constraints": 3,
         "prefs": 1.5,
+        "richness": 1.2,
+        "category": 1.0,
+        "open": 1.5,
         "price": 1,
         "distance": 1,
         "rating": 1,
@@ -89,6 +93,38 @@ def rating_strength(result: Result) -> float | None:
     return (r.normalized * n + prior * k) / (n + k)
 
 
+def richness(r: Result) -> float:
+    """How complete a listing is. Places with hours, a website, a phone and a photo are usually
+    real, active businesses; a bare name pin often is not."""
+    f = r.facts
+    score = 0.0
+    score += 0.3 if isinstance(f.get("opening_hours"), str) else 0.0
+    score += 0.25 if any(lk.kind.value in ("website", "booking") for lk in r.links) else 0.0
+    score += 0.15 if any(lk.kind.value == "phone" for lk in r.links) else 0.0
+    score += 0.15 if f.get("photo") else 0.0
+    score += 0.1 if r.address else 0.0
+    score += 0.05 if f.get("cuisine") or f.get("stars") else 0.0
+    return min(1.0, score)
+
+
+def open_fit(r: Result, at: datetime) -> float:
+    state, _ = open_status(r, at)
+    return {"open": 1.0, "24_7": 1.0, "closed": 0.0}.get(state or "", 0.4)
+
+
+def category_fit(r: Result, intent: SearchIntent) -> float:
+    """Exact cuisine/type match beats a place that merely lists it among many."""
+    wanted = [c.split(":", 1)[1] for c in intent.categories if c.startswith("cuisine:")]
+    if not wanted:
+        return 0.5
+    have = [c.split(":", 1)[1] for c in r.categories if c.startswith("cuisine:")]
+    if not have:
+        return 0.2
+    if have[0] in wanted:
+        return 1.0
+    return 0.6 if any(w in have for w in wanted) else 0.0
+
+
 def _price_value(item: Ranked) -> float | None:
     if item.report.price_in_budget_ccy is not None:
         return float(item.report.price_in_budget_ccy.amount)
@@ -115,6 +151,8 @@ def rank(items: list[Ranked], intent: SearchIntent, sort: SortMode | None = None
     u_lo, u_hi = (min(durs), max(durs)) if durs else (0.0, 0.0)
     s_lo, s_hi = (min(starts), max(starts)) if starts else (0.0, 0.0)
     target = _ts(intent.when.start) if intent.when and intent.when.start else None
+    at = reference_time(intent)
+    venue = intent.domain in (Domain.DINING, Domain.WELLNESS, Domain.EVENT, Domain.SHOPPING)
 
     for it in items:
         r, rep = it.result, it.report
@@ -136,6 +174,9 @@ def rank(items: list[Ranked], intent: SearchIntent, sort: SortMode | None = None
             else 0.4,
             "info": 1.0 - min(1.0, len(rep.unverified) * 0.25 + (0.2 if r.price and r.price.unknown_fees else 0)),
             "time_fit": 0.5,
+            "richness": richness(r),
+            "category": category_fit(r, intent),
+            "open": open_fit(r, at) if venue else 0.5,
         }
         if target is not None and r.starts_at is not None:
             comp["time_fit"] = max(0.0, 1.0 - abs(r.starts_at.timestamp() - target) / (4 * 3600))

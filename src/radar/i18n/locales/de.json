@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "Städtetrip",
   "cat.plan.evening_date": "Abend zu zweit",
   "cat.plan.day_trip": "Tagesausflug",
-  "cat.plan.birthday": "Geburtstag"
+  "cat.plan.birthday": "Geburtstag",
+  "status.open_until": "Geöffnet bis {time}",
+  "status.open": "Geöffnet",
+  "status.closed_opens": "Geschlossen, öffnet {time}",
+  "status.closed": "Geschlossen",
+  "status.open_24_7": "Rund um die Uhr",
+  "search.edit": "Suche ändern",
+  "search.earlier": "Früher",
+  "search.later": "Später",
+  "home.recent": "Letzte Suchen",
+  "home.near_me_now": "Jetzt offen in der Nähe",
+  "search.share_location": "Teile deinen Standort, um die nächsten Orte zu sehen.",
+  "result.open_count": "{count, plural, one {# hat gerade geöffnet} other {# haben gerade geöffnet}}",
+  "table.status": "Jetzt"
 }

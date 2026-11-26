@@ -167,4 +167,47 @@ def build_intent(d: dict[str, Any], user: Any) -> SearchIntent:
         if f in CONSTRAINTS and dom in CONSTRAINTS[f].domains and not intent.has_requirement(f):
             intent.requirements.append(Constraint(key=f))
     intent.sort = SortMode(d.get("sort", "best"))
+    if d.get("open_now") and intent.location is not None:
+        now = datetime.now(z).replace(second=0, microsecond=0)
+        intent.when = DateWindow(start=now, end=now)
+        intent.set_requirement("open_at")
+        intent.sort = SortMode.CLOSEST
+        if intent.location.radius_m is None:
+            intent.location.radius_m = 1500
     return intent
+
+
+def draft_from_intent(intent: SearchIntent) -> dict[str, Any]:
+    """Inverse of build_intent, so any search (typed or tapped) can be reopened in the panel."""
+    dom = intent.domain if intent.domain in STEPS else Domain.DINING
+    d: dict[str, Any] = {"domain": dom.value, "flags": [], "sort": intent.sort.value}
+    cats = [c for c in intent.categories if c.split(":")[0] in ("cuisine", "place", "event", "property", "mode")]
+    allowed = CATEGORIES.get(dom, [])
+    for c in cats:
+        token = c.replace(":", ".", 1)
+        if token in allowed:
+            d["cat"] = token
+            break
+    if intent.plan_kind is not None:
+        d["cat"] = f"plan.{intent.plan_kind.value}"
+    if "cat" not in d and (not allowed or "any" in allowed):
+        d["cat"] = "any"
+    for attr_, key in (("location", "city"), ("origin", "origin"), ("destination", "dest")):
+        ref = getattr(intent, attr_)
+        if ref is not None and ref.place is not None:
+            d[key] = ref.place.model_dump(mode="json")
+    if dom.is_transport:
+        d.pop("city", None)
+    if intent.stay is not None:
+        d["day"] = intent.stay.check_in.isoformat()
+        d["nights"] = intent.stay.nights
+    elif intent.when is not None and intent.when.start is not None:
+        d["day"] = intent.when.start.date().isoformat()
+        if (intent.when.start.hour, intent.when.start.minute) != (0, 0):
+            d["time"] = intent.when.start.strftime("%H:%M")
+    d["pax"] = intent.party.size
+    rooms = intent.requirement("bedrooms.min")
+    if rooms is not None:
+        d["rooms"] = int(rooms.value)
+    d["flags"] = [c.key for c in intent.requirements if c.key in FILTERS.get(dom, [])]
+    return d

@@ -10,7 +10,7 @@ from __future__ import annotations
 import calendar
 import re
 from dataclasses import dataclass, field
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 MONTHS: dict[int, tuple[str, ...]] = {
     1: (
@@ -117,6 +117,54 @@ NEXT_WEEK = r"\bnext week\b|на следующей неделе|след\w* н�
 NEXT_MONTH = r"\bnext month\b|в следующем месяце|след\w* месяц\w*|հաջորդ ամս\w*|შემდეგ თვე\w*|келесі ай\w*|\bnächsten monat\b|\ble mois prochain\b|\bil mese prossimo\b|\bmese prossimo\b|\bel próximo mes\b|\bel mes que viene\b"
 THIS_WEEK = r"\bthis week\b|на этой неделе|\bdiese woche\b|\bcette semaine\b|\bquesta settimana\b|\besta semana\b"
 
+NOW = (
+    r"\bright now\b|\bnow\b|\basap\b|сейчас|прямо сейчас|հիմա|ახლა|қазір|\bjetzt\b|\bsofort\b|"
+    r"\bmaintenant\b|\btout de suite\b|\badesso\b|\bsubito\b|\bahora\b|\bya mismo\b"
+)
+IN_HOURS = (
+    r"\bin (\d{1,2}|an?|one) (hours?|minutes?|mins?)\b|через (\d{1,2}|час|полчаса)\s*(час\w*|минут\w*)?|"
+    r"\bin (\d{1,2}) (stunden?|minuten?)\b|\bdans (\d{1,2}) (heures?|minutes?)\b|\btra (\d{1,2}) (ore|minuti)\b|"
+    r"\ben (\d{1,2}) (horas?|minutos?)\b"
+)
+TONIGHT = (
+    r"\btonight\b|\bthis evening\b|сегодня вечером|\bheute abend\b|\bce soir\b|\bstasera\b|\besta noche\b|"
+    r"\besta tarde\b|այսօր երեկոյան|დღეს საღამოს|бүгін кешке"
+)
+# Typical times for meals and parts of the day, used only when no clock time was given.
+PARTS_OF_DAY: list[tuple[str, time]] = [
+    (
+        r"\bbreakfast\b|завтрак\w*|նախաճաշ\w*|საუზმ\w*|таңғы ас\w*|\bfrühstück\w*|\bpetit[- ]déjeuner\b|"
+        r"\bcolazione\b|\bdesayun\w*",
+        time(9, 0),
+    ),
+    (r"\bbrunch\b|бранч", time(11, 30)),
+    (
+        r"\blunch\b|\bобед\w*|\bпообедать\b|ճաշ\w*|სადილ\w*|түскі ас\w*|\bmittag\w*|\bdéjeuner\b|\bpranzo\b|"
+        r"\balmuerzo\b|\bcomida\b",
+        time(13, 0),
+    ),
+    (
+        r"\bdinner\b|\bsupper\b|ужин\w*|поужинать|ընթրիք\w*|ვახშამ\w*|кешкі ас\w*|\babendessen\b|\bdîner\b|"
+        r"\bcena\b|\bcenar\b",
+        time(19, 30),
+    ),
+    (
+        TONIGHT + r"|\b(in the )?evening\b|вечером|\babends\b|\ble soir\b|\bdi sera\b|\bpor la noche\b|երեկոյան|"
+        r"საღამოს|кешке",
+        time(19, 0),
+    ),
+    (
+        r"\b(in the )?morning\b|утром|\bmorgens\b|\ble matin\b|\bdi mattina\b|\bpor la mañana\b|առավոտյան|დილით|"
+        r"таңертең",
+        time(9, 0),
+    ),
+    (
+        r"\b(in the )?afternoon\b|днём|днем|\bnachmittags\b|\bl'après-midi\b|\bdi pomeriggio\b|\bpor la tarde\b|"
+        r"կեսօրից հետո|შუადღისას",
+        time(15, 0),
+    ),
+]
+
 ARRIVE_BY = (
     r"\barriv\w*\s+(?:by|before|no later than)\b|\bbe (?:there|in \w+) by\b|\bприбы\w*\s+до\b|\bприезд\w*\s+до\b|"
     r"\bприлет\w*\s+до\b|\bприлёт\w*\s+до\b|\bankunft\s+(?:vor|bis)\b|\bankommen\s+(?:vor|bis)\b|"
@@ -143,6 +191,10 @@ class DateParse:
     nights: int | None = None
     month_window: bool = False
     spans: list[tuple[int, int]] = field(default_factory=list)
+    # "now", "in 2 hours": anchored to the current moment.
+    relative_now: bool = False
+    # "for dinner", "in the morning": a typical time, not one the user typed.
+    vague_time: bool = False
 
     @property
     def found(self) -> bool:
@@ -198,7 +250,7 @@ def _next_weekday(today: date, wd: int, strictly_next: bool = False) -> date:
     return today + timedelta(days=delta)
 
 
-def parse_dates(text: str, today: date) -> DateParse:
+def parse_dates(text: str, today: date, now: time | None = None) -> DateParse:
     res = DateParse()
     low = text.lower()
     m: re.Match[str] | None
@@ -354,7 +406,9 @@ def parse_dates(text: str, today: date) -> DateParse:
         if res.date_from and not res.date_to:
             res.date_to = res.date_from + timedelta(days=res.nights)
 
-    # times
+    # times ("in 2 hours" is a duration, not "2 o'clock")
+    if rel := re.search(IN_HOURS, low):
+        taken.append(rel.span())
     times = [(t, s, e) for t, s, e in find_times(text) if free(s, e)]
     if times:
         between = re.search(r"\bbetween\b|\bмежду\b|\bс\b.*\bдо\b|\bzwischen\b|\bentre\b|\btra\b|\bfra\b", low)
@@ -376,4 +430,28 @@ def parse_dates(text: str, today: date) -> DateParse:
             res.spans.append((s, e))
     elif re.search(r"\bmidnight\b|полноч\w*|\bmitternacht\b|\bminuit\b|\bmezzanotte\b|\bmedianoche\b", low):
         res.time_from = time(0, 0)
+    elif now is not None and (m := re.search(IN_HOURS, low)):
+        num = re.search(r"\d+", m.group(0))
+        n = int(num.group(0)) if num else 1
+        per = 1 if re.search(r"min|мин", m.group(0)) else 60
+        minutes = 30 if "полчаса" in m.group(0) else n * per
+        later = datetime.combine(today, now) + timedelta(minutes=minutes)
+        res.date_from = res.date_from or later.date()
+        res.time_from = later.time().replace(second=0, microsecond=0)
+        res.relative_now = True
+        mark(m)
+    elif now is not None and (m := re.search(NOW, low)):
+        res.date_from = res.date_from or today
+        res.time_from = now.replace(second=0, microsecond=0)
+        res.relative_now = True
+        mark(m)
+    else:
+        for pat, t_ in PARTS_OF_DAY:
+            if m := re.search(pat, low):
+                res.time_from = t_
+                res.vague_time = True
+                if res.date_from is None and re.search(TONIGHT, low):
+                    res.date_from = today
+                mark(m)
+                break
     return res

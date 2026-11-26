@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     photon_url: str = Field("https://photon.komoot.io", alias="RADAR_PHOTON_URL")
     overpass_urls: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
+            "https://ovp.dresel.systems/api/interpreter",
             "https://overpass-api.de/api/interpreter",
             "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
             "https://overpass.private.coffee/api/interpreter",

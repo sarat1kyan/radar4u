@@ -447,13 +447,17 @@ def _monitor(text: str, money: list[tuple[Money, int, int]]) -> MonitorSpec | No
     return MonitorSpec(kind=MonitorKind.NEW_RESULTS)
 
 
-def _window(dp: DateParse, zone: str | None, domain: Domain) -> DateWindow | None:
+def _window(dp: DateParse, zone: str | None, domain: Domain, today: date | None = None) -> DateWindow | None:
     if not dp.found:
         return None
     z = tz(zone)
-    d1 = dp.date_from
+    d1 = dp.date_from or (today if dp.time_from or dp.time_to else None)
     if d1 is None:
         return None
+    if dp.vague_time and dp.time_from and domain.is_transport:
+        # "tomorrow morning" for a journey: departures around that part of the day.
+        mid = datetime.combine(d1, dp.time_from, z)
+        return DateWindow(start=mid - timedelta(hours=3), end=mid + timedelta(hours=3))
     start_t = dp.time_from or (time(0, 0) if domain is not Domain.DINING else None)
     if dp.arrive_by and dp.time_to:
         return DateWindow(start=datetime.combine(d1, time(0, 0), z), end=datetime.combine(d1, dp.time_to, z))
@@ -504,6 +508,7 @@ def parse(
     zone: str | None = None,
     ui_language: str = "en",
     force_domain: Domain | None = None,
+    now: datetime | None = None,
 ) -> ParseOutcome:
     lang = detect_language(text, ui_language)
     scores = _score_domains(text)
@@ -537,7 +542,7 @@ def parse(
         ):
             intent.categories.append(token)
 
-    dp = parse_dates(text, today)
+    dp = parse_dates(text, today, now.timetz().replace(tzinfo=None) if now else None)
     if working_domain is Domain.STAY and dp.date_from:
         check_out = (
             dp.date_to
@@ -549,7 +554,7 @@ def parse(
         if dp.time_from:
             intent.when = DateWindow(start=datetime.combine(dp.date_from, dp.time_from, tz(zone_eff)))
     else:
-        intent.when = _window(dp, zone_eff, working_domain)
+        intent.when = _window(dp, zone_eff, working_domain, today)
         intent.arrive_by = dp.arrive_by
 
     default_unit = {
@@ -576,6 +581,18 @@ def parse(
 
     _constraints(text, intent)
     _numeric_constraints(text, intent)
+    if re.search(L.OPEN_NOW, text, FLAGS) and working_domain in (
+        Domain.DINING,
+        Domain.WELLNESS,
+        Domain.EVENT,
+        Domain.SHOPPING,
+    ):
+        intent.set_requirement("open_at")
+        if intent.when is None and now is not None:
+            start = now.astimezone(tz(zone_eff)).replace(second=0, microsecond=0)
+            intent.when = DateWindow(start=start, end=start)
+    if re.search(L.NEAR_ME, text, FLAGS):
+        intent.categories.append("near:me")
 
     for pat, mode in L.SORT_CUES:
         if re.search(pat, text, FLAGS):

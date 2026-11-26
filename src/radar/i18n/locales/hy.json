@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "Քաղաքային տուր",
   "cat.plan.evening_date": "Երեկո դրսում",
   "cat.plan.day_trip": "Մեկօրյա տուր",
-  "cat.plan.birthday": "Ծննդյան օր"
+  "cat.plan.birthday": "Ծննդյան օր",
+  "status.open_until": "Բաց է մինչև {time}",
+  "status.open": "Բաց է",
+  "status.closed_opens": "Փակ է, կբացվի {time}",
+  "status.closed": "Փակ է",
+  "status.open_24_7": "Շուրջօրյա",
+  "search.edit": "Փոխել որոնումը",
+  "search.earlier": "Ավելի վաղ",
+  "search.later": "Ավելի ուշ",
+  "home.recent": "Վերջին որոնումները",
+  "home.near_me_now": "Բաց է մոտակայքում",
+  "search.share_location": "Կիսվեք ձեր տեղադրությամբ՝ մոտակա վայրերը տեսնելու համար։",
+  "result.open_count": "{count, plural, one {# բաց է հիմա} other {# բաց է հիմա}}",
+  "table.status": "Հիմա"
 }

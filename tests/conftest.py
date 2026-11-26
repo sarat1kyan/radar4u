@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from datetime import date
 
 import pytest
@@ -8,6 +9,8 @@ import pytest
 # Tests never use real credentials or a real database.
 os.environ.setdefault("RADAR_ENV", "test")
 os.environ["RADAR_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+# Fresh on-disk cache per test session so cached upstream answers never leak between runs.
+os.environ["RADAR_CACHE_DIR"] = tempfile.mkdtemp(prefix="radar-test-cache-")
 for var in (
     "DUFFEL_ACCESS_TOKEN",
     "TRAVELPAYOUTS_TOKEN",

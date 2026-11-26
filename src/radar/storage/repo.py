@@ -80,6 +80,38 @@ async def last_search(s: AsyncSession, user: User) -> SearchSession | None:
     return row
 
 
+async def recent_searches(s: AsyncSession, user: User, n: int = 3) -> list[SearchSession]:
+    """Last distinct searches that produced results (pending clarifications and plans excluded)."""
+    rows = (
+        (
+            await s.execute(
+                select(SearchSession)
+                .where(SearchSession.user_id == user.id)
+                .order_by(SearchSession.id.desc())
+                .limit(20)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out, seen = [], set()
+    for r in rows:
+        if not r.results or r.summary.get("pending"):
+            continue
+        key = (
+            str(r.intent.get("domain"))
+            + str(r.intent.get("categories"))
+            + str((r.intent.get("location") or r.intent.get("destination") or {}).get("text"))
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+        if len(out) >= n:
+            break
+    return out
+
+
 async def get_search(s: AsyncSession, user: User, session_id: int) -> SearchSession | None:
     row = await s.get(SearchSession, session_id)
     return row if row is not None and row.user_id == user.id else None

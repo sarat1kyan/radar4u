@@ -21,6 +21,7 @@ from radar.itinerary.planner import ItemStatus, Itinerary
 from radar.search.filters import Tier
 from radar.search.pipeline import SearchOutcome
 from radar.search.ranking import Ranked
+from radar.search.status import open_status, reference_time
 
 PAGE = render.PAGE_SIZE
 
@@ -37,6 +38,24 @@ def _tier_title(o: SearchOutcome, tier: Tier, lang: str) -> str:
     return T("search.alternatives_header", lang)
 
 
+def status_label(r: Ranked, intent: SearchIntent, lang: str, clock: str) -> str | None:
+    """'Open until 23:00' / 'Closed, opens 12:00' at the user's time (or now), bold when open."""
+    at = reference_time(intent)
+    state, change = open_status(r.result, at)
+    if state is None:
+        return None
+    if state == "24_7":
+        return f"<b>{T('status.open_24_7', lang)}</b>"
+    when = None
+    if change is not None:
+        when = i18n.ftime(change, lang, clock)
+        if (change - at).total_seconds() > 12 * 3600:
+            when = f"{i18n.fdate(change, lang, 'EEE')} {when}"
+    if state == "open":
+        return "<b>" + (T("status.open_until", lang, time=when) if when else T("status.open", lang)) + "</b>"
+    return T("status.closed_opens", lang, time=when) if when else T("status.closed", lang)
+
+
 def _meta(r: Ranked, intent: SearchIntent, lang: str, clock: str) -> list[str]:
     res = r.result
     bits: list[str] = []
@@ -46,11 +65,9 @@ def _meta(r: Ranked, intent: SearchIntent, lang: str, clock: str) -> list[str]:
         bits.append(i18n.distance(res.distance_m, lang))
     if res.starts_at and intent.domain is Domain.EVENT:
         bits.append(i18n.fdatetime(res.starts_at, lang, clock))
-    if intent.domain in (Domain.DINING, Domain.WELLNESS):
-        if "open_at" in r.report.met:
-            bits.append(T("result.open_now", lang))
-        elif "open_at" in r.report.unmet:
-            bits.append(T("result.closed_then", lang))
+    venue = intent.domain in (Domain.DINING, Domain.WELLNESS, Domain.EVENT, Domain.SHOPPING) and not res.legs
+    if venue and (label := status_label(r, intent, lang, clock)) is not None:
+        bits.append(label)
     if res.rating:
         bits.append(f"{i18n.number(res.rating.value, lang)}/{i18n.number(res.rating.scale, lang, '0')}")
     if isinstance(res.facts.get("stars"), int):
@@ -73,6 +90,11 @@ def results_view(
         return r, fallback, ui.kb([[(T("search.new", lang), kb.MenuCb(a="home").pack(), "primary")]])
     if not o.ranked:
         r.p(T("search.no_results", lang))
+    elif intent.domain in (Domain.DINING, Domain.WELLNESS) and page == 0:
+        at = reference_time(intent)
+        n_open = sum(1 for i in o.ranked if open_status(i.result, at)[0] in ("open", "24_7"))
+        if n_open:
+            r.p(f"<i>{T('result.open_count', lang, count=n_open)}</i>")
     chunk = o.ranked[page * PAGE : (page + 1) * PAGE]
     current_tier: Tier | None = None
     transport = intent.domain.is_transport
@@ -145,7 +167,16 @@ def results_view(
             (T("search.watch", lang), kb.WatchCb(s=sid, k="").pack(), "success"),
         ]
     )
-    kb_rows.append([(T("search.new", lang), kb.MenuCb(a="home").pack(), None)])
+    if transport:
+        kb_rows.append(
+            [(T("search.earlier", lang), f"tp:{sid}:-", None), (T("search.later", lang), f"tp:{sid}:+", None)]
+        )
+    kb_rows.append(
+        [
+            (T("search.edit", lang), f"sb:edit:{sid}", "primary"),
+            (T("search.new", lang), kb.MenuCb(a="home").pack(), None),
+        ]
+    )
     return r, fallback, ui.kb(kb_rows)
 
 
@@ -203,6 +234,8 @@ def card_view(
     if res.distance_m is not None:
         facts.append([T("table.distance", lang), i18n.distance(res.distance_m, lang)])
     hours = res.facts.get("opening_hours")
+    if (label := status_label(item, intent, lang, clock)) is not None:
+        facts.insert(0, [T("table.status", lang), label])
     if isinstance(hours, str):
         facts.append([T("table.hours", lang), ui.esc(hours, 120)])
     if res.starts_at and not res.legs:

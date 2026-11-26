@@ -40,9 +40,9 @@ async def _save(app: App, user: User, **fields: object) -> User:
 
 
 async def _home(message: Message, app: App, user: User) -> None:
-    from radar.bot.handlers.builder import home
+    from radar.bot.handlers.builder import home_view
 
-    r, fb, markup = home(user, app.settings.webapp_url)
+    r, fb, markup = await home_view(app, user)
     await ui.send(message, r, fb, markup)
 
 
@@ -144,7 +144,7 @@ async def on_location(message: Message, app: App, user: User, state: FSMContext)
     await state.update_data(current=place.model_dump(mode="json"))
     from radar.bot.handlers.builder import on_builder_location
 
-    if await on_builder_location(message, state, user, place):
+    if await on_builder_location(message, app, state, user, place):
         return
     await message.answer(i18n.t("location.saved", user.language), reply_markup=ReplyKeyboardRemove())
 

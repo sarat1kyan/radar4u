@@ -72,7 +72,7 @@ class Interpreter:
         base_today, zone = self._today(ctx)
         today = today or base_today
 
-        fresh = parse(text, today=today, zone=zone, ui_language=ctx.language)
+        fresh = parse(text, today=today, zone=zone, ui_language=ctx.language, now=now_in(zone))
         if previous is not None and is_followup(text, previous, fresh):
             intent = refine(previous, text, today=today, zone=zone)
             result = Interpretation(intent=intent, source="rules", confidence=1.0, refined=True)
@@ -85,6 +85,9 @@ class Interpreter:
     async def _complete(self, result: Interpretation, ctx: UserContext, *, online: bool) -> None:
         intent = result.intent
         anchor = ctx.anchor
+        if "near:me" in intent.categories and ctx.current is not None and not intent.domain.is_transport:
+            intent.location = LocationRef(text=ctx.current.name, place=ctx.current, radius_m=1500)
+            result.used_context_location = True
         # Fill gaps from authorized context instead of asking.
         if anchor is not None:
             if intent.domain.is_transport and intent.origin is None and intent.destination is not None:

@@ -103,6 +103,18 @@
   }
 
   // ---------- home ----------
+  function nearNow() {
+    haptic("medium");
+    const run = (place) => { draft = { domain: "dining", city: place, open_now: true, sort: "closest", flags: [] }; doSearch({ draft }); };
+    const lm = tg && tg.LocationManager;
+    if (!lm) { if (ME.home) run(ME.home); return; }
+    const go = () => lm.getLocation((loc) => {
+      if (!loc) { if (ME.home) run(ME.home); else toast(t("search.share_location")); return; }
+      api(`/api/v1/places?q=${loc.latitude.toFixed(5)},${loc.longitude.toFixed(5)}`).then((p) => p.length && run(p[0]));
+    });
+    if (lm.isInited) go(); else lm.init(go);
+  }
+
   function renderHome() {
     const home = ME.home;
     const pill = $("#city-pill");
@@ -112,6 +124,8 @@
     $("#q").placeholder = t("home.hint");
     const tiles = $("#tiles");
     tiles.replaceChildren();
+    const quick = $("#quick-row");
+    quick.replaceChildren(h("button", { class: "chip ok", type: "button", onclick: nearNow }, t("home.near_me_now")));
     for (const d of CAT.domains) {
       const [a, b] = (GRAD[d.id] || GRAD.plan).split(",");
       tiles.appendChild(h("button", { class: "tile", onclick: () => { haptic(); startBuilder(d.id); } },
@@ -301,6 +315,11 @@
     $("#r-eyebrow").textContent = head[0] || "";
     $("#r-title").textContent = head.slice(1, 3).join(" | ");
     $("#r-chips").replaceChildren(...head.slice(3).concat(summary.slice(1)).filter(Boolean).map((x) => h("span", { class: "chip" }, x)));
+    if (r.draft && r.draft.domain) {
+      $("#r-chips").appendChild(h("button", { class: "chip on", type: "button", onclick: () => {
+        haptic(); draft = { flags: [], sort: "best", ...r.draft }; delete draft.open_now; show("builder"); renderBuilder();
+      } }, t("search.edit")));
+    }
     const list = $("#r-list");
     list.replaceChildren();
     if (r.missing && r.missing.length) {
@@ -341,9 +360,8 @@
   }
   function tags(it) {
     const out = [];
+    if (it.status) out.push(h("span", { class: `tag ${it.status.state === "open" ? "ok" : "bad"}` }, it.status.label));
     if (it.provenance.freshness === "fixture") out.push(h("span", { class: "tag demo" }, "DEMO"));
-    if (it.met_keys.includes("open_at")) out.push(h("span", { class: "tag ok" }, t("result.open_now")));
-    if (it.unmet_keys.includes("open_at")) out.push(h("span", { class: "tag bad" }, t("result.closed_then")));
     if (it.unverified) out.push(h("span", { class: "tag warn" }, t("result.unconfirmed_short", { items: it.unverified })));
     if (it.tier === "alternative" && it.unmet) out.push(h("span", { class: "tag bad" }, it.unmet));
     if (it.stars) out.push(h("span", { class: "tag" }, tp("result.stars", it.stars)));

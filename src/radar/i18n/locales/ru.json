@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "Городская поездка",
   "cat.plan.evening_date": "Вечер вне дома",
   "cat.plan.day_trip": "Поездка на день",
-  "cat.plan.birthday": "День рождения"
+  "cat.plan.birthday": "День рождения",
+  "status.open_until": "Открыто до {time}",
+  "status.open": "Открыто",
+  "status.closed_opens": "Закрыто, откроется в {time}",
+  "status.closed": "Закрыто",
+  "status.open_24_7": "Круглосуточно",
+  "search.edit": "Изменить поиск",
+  "search.earlier": "Раньше",
+  "search.later": "Позже",
+  "home.recent": "Недавние поиски",
+  "home.near_me_now": "Открыто рядом",
+  "search.share_location": "Поделитесь геопозицией, чтобы увидеть ближайшие места.",
+  "result.open_count": "{count, plural, one {# открыто сейчас} few {# открыто сейчас} many {# открыто сейчас} other {# открыто сейчас}}",
+  "table.status": "Сейчас"
 }

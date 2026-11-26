@@ -132,4 +132,31 @@ def describe_day(value: str | None, day: int) -> str | None:
     return ", ".join(f"{hm(s)}-{hm(e if e <= 1440 else e - 1440)}" for s, e in spans)
 
 
-__all__ = ["HoursParseError", "describe_day", "is_open", "open_for", "parse"]
+def next_change(value: str | None, at: datetime, horizon_days: int = 7) -> tuple[Tri, datetime | None]:
+    """(open now?, when that changes). Scans forward minute-accurately over the parsed table."""
+    if not value:
+        return Tri.UNKNOWN, None
+    try:
+        table = parse(value)
+    except HoursParseError:
+        return Tri.UNKNOWN, None
+    now_state = is_open(value, at)
+    if now_state is Tri.UNKNOWN:
+        return Tri.UNKNOWN, None
+    # Candidate boundaries: every span start/end over the horizon.
+    base = at.replace(hour=0, minute=0, second=0, microsecond=0)
+    points: list[datetime] = []
+    for d in range(-1, horizon_days + 1):
+        day = base + timedelta(days=d)
+        for s, e in table.get(day.weekday(), []):
+            points.append(day + timedelta(minutes=s))
+            points.append(day + timedelta(minutes=e))
+    for p in sorted(x for x in points if x > at):
+        if is_open(value, p) is not now_state:
+            return now_state, p
+    if value.strip() == "24/7":
+        return Tri.YES, None
+    return now_state, None
+
+
+__all__ = ["HoursParseError", "describe_day", "is_open", "next_change", "open_for", "parse"]

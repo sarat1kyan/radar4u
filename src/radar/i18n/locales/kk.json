@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "Қала саяхаты",
   "cat.plan.evening_date": "Кешкі серуен",
   "cat.plan.day_trip": "Бір күндік сапар",
-  "cat.plan.birthday": "Туған күн"
+  "cat.plan.birthday": "Туған күн",
+  "status.open_until": "{time} дейін ашық",
+  "status.open": "Ашық",
+  "status.closed_opens": "Жабық, {time} ашылады",
+  "status.closed": "Жабық",
+  "status.open_24_7": "Тәулік бойы",
+  "search.edit": "Іздеуді өзгерту",
+  "search.earlier": "Ертерек",
+  "search.later": "Кешірек",
+  "home.recent": "Соңғы іздеулер",
+  "home.near_me_now": "Жақын маңда ашық",
+  "search.share_location": "Ең жақын орындарды көру үшін орналасқан жеріңізбен бөлісіңіз.",
+  "result.open_count": "{count, plural, one {# қазір ашық} other {# қазір ашық}}",
+  "table.status": "Қазір"
 }

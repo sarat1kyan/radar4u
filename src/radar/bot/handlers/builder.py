@@ -8,6 +8,7 @@ typed; the only text input is an optional city name.
 from __future__ import annotations
 
 import calendar
+import re
 from datetime import date, time, timedelta
 from typing import Any
 
@@ -21,12 +22,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message, ReplyKey
 from radar import i18n
 from radar.app import App
 from radar.bot import keyboards as kb
-from radar.bot import ui
+from radar.bot import render, ui
 from radar.bot.handlers.search import execute
 from radar.core.timeutil import now_in, tz
-from radar.domain.common import Domain, Place
+from radar.domain.common import DateWindow, Domain, LocationRef, Place, SortMode
+from radar.domain.intents import SearchIntent
 from radar.nlu.rules import _required_missing
-from radar.search.draft import CATEGORIES, FILTERS, GRID, SORTS, STEPS, build_intent
+from radar.search.draft import CATEGORIES, FILTERS, GRID, SORTS, STEPS, build_intent, draft_from_intent
+from radar.storage import repo
 from radar.storage.models import User
 
 router = Router(name="builder")
@@ -269,7 +272,20 @@ async def show(target: Message, state: FSMContext, user: User, *, edit: bool) ->
 # --- entry points -----------------------------------------------------------------------------------
 
 
-def home(user: User, webapp_url: str | None) -> tuple[ui.Rich, str, InlineKeyboardMarkup]:
+async def home_view(app: App, user: User) -> tuple[ui.Rich, str, InlineKeyboardMarkup]:
+    async with app.db.session() as s:
+        u = await s.get(User, user.id)
+        rows = await repo.recent_searches(s, user, 3)
+    recent = []
+    for row in rows:
+        label = render.intent_summary(SearchIntent.model_validate(row.intent), user.language).split("\n")[0]
+        recent.append((row.id, re.sub(r"<[^>]+>", "", label)[:48]))
+    return home(u or user, app.settings.webapp_url, recent)
+
+
+def home(
+    user: User, webapp_url: str | None, recent: list[tuple[int, str]] | None = None
+) -> tuple[ui.Rich, str, InlineKeyboardMarkup]:
     lang = user.language
     city = (user.home_place or {}).get("name")
     r = ui.Rich().h("RADAR", 1).p(f"<i>{T('home.tagline', lang)}</i>")
@@ -285,6 +301,11 @@ def home(user: User, webapp_url: str | None) -> tuple[ui.Rich, str, InlineKeyboa
         for d in GRID
     ]
     rows = _grid(items, 3)
+    rows.append([(T("home.near_me_now", lang), cb("near"), "success")])
+    if recent:
+        r.h(T("home.recent", lang), 4)
+        for sid, label in recent:
+            rows.append([(label, cb("rerun", str(sid)), None)])
     rows.append(
         [
             (T("menu.radars", lang), kb.MenuCb(a="radars").pack(), None),
@@ -305,7 +326,7 @@ def home(user: User, webapp_url: str | None) -> tuple[ui.Rich, str, InlineKeyboa
 @router.message(Command("search", "menu"))
 async def cmd_home(message: Message, app: App, user: User, state: FSMContext) -> None:
     await state.set_state(None)
-    r, fb, markup = home(user, app.settings.webapp_url)
+    r, fb, markup = await home_view(app, user)
     await ui.send(message, r, fb, markup)
 
 
@@ -313,7 +334,7 @@ async def cmd_home(message: Message, app: App, user: User, state: FSMContext) ->
 async def menu_home(cb_: CallbackQuery, app: App, user: User, state: FSMContext) -> None:
     await state.set_state(None)
     if isinstance(cb_.message, Message):
-        r, fb, markup = home(user, app.settings.webapp_url)
+        r, fb, markup = await home_view(app, user)
         await ui.edit(cb_.message, r, fb, markup)
     await cb_.answer()
 
@@ -333,9 +354,33 @@ async def on_sb(cq: CallbackQuery, callback_data: SB, app: App, user: User, stat
     current = data.get("current")
     if a == "x":
         await save(state, {})
-        r, fb, markup = home(user, app.settings.webapp_url)
+        r, fb, markup = await home_view(app, user)
         await ui.edit(msg, r, fb, markup)
         await cq.answer()
+        return
+    if a in ("edit", "rerun"):
+        async with app.db.session() as s:
+            row = await repo.get_search(s, user, int(v)) if v.isdigit() else None
+        if row is None:
+            await cq.answer(T("error.not_found", user.language), show_alert=True)
+            return
+        intent = SearchIntent.model_validate(row.intent)
+        await cq.answer()
+        if a == "rerun":
+            await execute(msg, app, user, intent)
+            return
+        d = draft_from_intent(intent)
+        d["step"] = "filters"
+        await save(state, d)
+        await show(msg, state, user, edit=False)
+        return
+    if a == "near":
+        await cq.answer()
+        if current:
+            await execute(msg, app, user, near_now_intent(Place.model_validate(current), user))
+            return
+        await save(state, {"domain": Domain.DINING.value, "await": "nearnow"})
+        await msg.answer(T("search.share_location", user.language), reply_markup=kb.location_request(user.language))
         return
     if a == "dom":
         d = {"domain": v, "flags": [], "sort": "best"}
@@ -354,7 +399,7 @@ async def on_sb(cq: CallbackQuery, callback_data: SB, app: App, user: User, stat
             d.pop(done[-1], None)
             d.pop("step", None)
         else:
-            r, fb, markup = home(user, app.settings.webapp_url)
+            r, fb, markup = await home_view(app, user)
             await ui.edit(msg, r, fb, markup)
             await save(state, {})
             await cq.answer()
@@ -435,12 +480,17 @@ async def on_city_text(message: Message, app: App, user: User, state: FSMContext
     await show(message, state, user, edit=False)
 
 
-async def on_builder_location(message: Message, state: FSMContext, user: User, place: Place) -> bool:
+async def on_builder_location(message: Message, app: App, state: FSMContext, user: User, place: Place) -> bool:
     """Called by the location handler; returns True if the builder consumed it."""
     d = await draft(state)
     field = d.pop("await", None)
     if not field or not d.get("domain"):
         return False
+    if field == "nearnow":
+        await save(state, {})
+        await message.answer(T("location.saved", user.language), reply_markup=ReplyKeyboardRemove())
+        await execute(message, app, user, near_now_intent(place, user))
+        return True
     d[field] = place.model_dump(mode="json")
     d.pop("step", None)
     d["step"] = next_step(d)
@@ -448,3 +498,17 @@ async def on_builder_location(message: Message, state: FSMContext, user: User, p
     await message.answer("OK", reply_markup=ReplyKeyboardRemove())
     await show(message, state, user, edit=False)
     return True
+
+
+def near_now_intent(place: Place, user: User) -> SearchIntent:
+    """Restaurants and cafes around the user that are open right now."""
+    now = now_in(place.timezone or user.timezone).replace(second=0, microsecond=0)
+    intent = SearchIntent(
+        domain=Domain.DINING,
+        language=user.language,
+        location=LocationRef(text=place.name, place=place, radius_m=1500),
+        when=DateWindow(start=now, end=now),
+        sort=SortMode.CLOSEST,
+    )
+    intent.set_requirement("open_at")
+    return intent

@@ -12,13 +12,16 @@ Data is (c) OpenStreetMap contributors, ODbL.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import math
 import time
 from collections import OrderedDict
 from typing import Any
 
 from radar.config import get_settings
 from radar.core.errors import ProviderError
+from radar.core.kvcache import KVCache
 from radar.core.provenance import Freshness, Provenance, Tri, utcnow
 from radar.domain.common import Domain, GeoPoint
 from radar.domain.intents import SearchIntent
@@ -120,13 +123,20 @@ def build_query(intent: SearchIntent, lat: float, lon: float, radius_m: int, lim
     clauses = []
     for key in keys:
         for sel in SELECTORS[key]:
-            clauses.append(f'  nwr{sel}{cuisine}["name"](around:{radius_m},{lat:.6f},{lon:.6f});')
+            clauses.append(f'  nw{sel}{cuisine}["name"];')
     if intent.domain is Domain.DINING and cuisine and not any(k.startswith("place:") for k in keys):
-        clauses = [
-            f'  nwr["amenity"~"^(restaurant|cafe|fast_food)$"]{cuisine}["name"](around:{radius_m},{lat:.6f},{lon:.6f});'
-        ]
+        clauses = [f'  nw["amenity"~"^(restaurant|cafe|fast_food)$"]{cuisine}["name"];']
     body = "\n".join(dict.fromkeys(clauses))
-    return f"[out:json][timeout:20];\n(\n{body}\n);\nout center tags {limit};"
+    # A bounding box is several times cheaper for Overpass than around:; results are cut to the
+    # circle afterwards using the real distance.
+    s_, w_, n_, e_ = bbox_around(lat, lon, radius_m)
+    return f"[out:json][timeout:15][bbox:{s_:.5f},{w_:.5f},{n_:.5f},{e_:.5f}];\n(\n{body}\n);\nout center tags {limit};"
+
+
+def bbox_around(lat: float, lon: float, radius_m: int) -> tuple[float, float, float, float]:
+    dlat = radius_m / 111_320
+    dlon = radius_m / (111_320 * max(0.2, math.cos(math.radians(lat))))
+    return lat - dlat, lon - dlon, lat + dlat, lon + dlon
 
 
 def _name(tags: dict[str, str], lang: str) -> str:
@@ -256,45 +266,88 @@ class OsmPlacesProvider(Provider):
         Capability(Domain.STAY, monitoring_allowed=False, cost_units=0.5),
     )
 
-    def __init__(self, http: ProviderHttp | None = None, cache_ttl_s: float = 3600) -> None:
+    def __init__(
+        self, http: ProviderHttp | None = None, cache_ttl_s: float = 3600, store: KVCache | None = None
+    ) -> None:
         # Overpass etiquette: one request at a time, no bursts. One client per mirror so a dead
         # mirror trips its own breaker without hiding the health of the others.
         self._shared = http
         self._mirrors: dict[str, ProviderHttp] = {}
         self._preferred: str | None = None
+        self.store = store or KVCache()
+        self.wikidata = ProviderHttp("wikidata", rate_per_s=2, burst=2, max_retries=0, timeout_s=8)
+        self.disk_ttl_s = 24 * 3600
+        self.hedge_after_s = 2.5
         self.cache_ttl_s = cache_ttl_s
         self._cache: OrderedDict[str, tuple[float, list[dict[str, Any]]]] = OrderedDict()
 
+    async def _one(self, url: str, query: str) -> list[dict[str, Any]]:
+        resp = await self._client(url).request("POST", url, data={"data": query}, retry_on_post=False)
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise ProviderError(self.name, "invalid JSON from upstream") from exc
+        elements = payload.get("elements", [])
+        remark = str(payload.get("remark") or "")
+        if not elements and ("error" in remark.lower() or "timed out" in remark.lower()):
+            raise ProviderError(self.name, "Overpass query did not complete", retryable=True)
+        return list(elements)
+
     async def _fetch(self, query: str) -> list[dict[str, Any]]:
+        """Memory cache -> disk cache -> hedged request across mirrors (first good answer wins)."""
         key = hashlib.sha256(query.encode()).hexdigest()
         hit = self._cache.get(key)
         if hit and time.monotonic() - hit[0] < self.cache_ttl_s:
             return hit[1]
-        last: ProviderError | None = None
-        urls = list(get_settings().overpass_urls)
-        # Try the mirror that answered last time first; dead mirrors sit behind an open breaker.
+        stored = await self.store.get(f"osm:{key}", self.disk_ttl_s)
+        if isinstance(stored, list):
+            self._cache[key] = (time.monotonic(), stored)
+            return stored
+        urls = [u for u in get_settings().overpass_urls if self._client(u).breaker.allow()]
         if self._preferred in urls:
             urls.remove(self._preferred)
             urls.insert(0, self._preferred)
-        for url in urls:
-            http = self._client(url)
-            try:
-                resp = await http.request("POST", url, data={"data": query}, retry_on_post=True)
-                payload = resp.json()
-                elements = payload.get("elements", [])
-                remark = str(payload.get("remark") or "")
-                if not elements and ("error" in remark.lower() or "timed out" in remark.lower()):
-                    raise ProviderError(self.name, "Overpass query did not complete", retryable=True)
-                self._preferred = url
-                self._cache[key] = (time.monotonic(), elements)
-                while len(self._cache) > 256:
-                    self._cache.popitem(last=False)
-                return list(elements)
-            except ProviderError as exc:
-                last = exc
-            except ValueError:
-                last = ProviderError(self.name, "invalid JSON from upstream")
-        raise last or ProviderError(self.name, "no Overpass endpoint configured")
+        if not urls:
+            raise ProviderError(self.name, "all Overpass mirrors are cooling down", code="circuit_open")
+        last: BaseException | None = None
+        empty_ok = False
+        pending: set[asyncio.Task[list[dict[str, Any]]]] = set()
+        url_of: dict[asyncio.Task[list[dict[str, Any]]], str] = {}
+        queue = list(urls)
+        try:
+            while queue or pending:
+                if queue:
+                    url = queue.pop(0)
+                    task = asyncio.create_task(self._one(url, query))
+                    pending.add(task)
+                    url_of[task] = url
+                # Give the current mirror a head start; start the next one if it is slow.
+                done, pending = await asyncio.wait(
+                    pending, timeout=self.hedge_after_s if queue else None, return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in done:
+                    if t.exception() is None:
+                        elements = t.result()
+                        if not elements and (queue or pending):
+                            # Some public mirrors carry only a regional extract and answer "nothing"
+                            # for other countries. An empty answer is only trusted once every mirror agrees.
+                            empty_ok = True
+                            continue
+                        self._preferred = url_of[t]
+                        self._cache[key] = (time.monotonic(), elements)
+                        while len(self._cache) > 256:
+                            self._cache.popitem(last=False)
+                        await self.store.set(f"osm:{key}", elements)
+                        return elements
+                    last = t.exception()
+        finally:
+            for t in pending:
+                t.cancel()
+        if empty_ok:
+            return []
+        if isinstance(last, ProviderError):
+            raise last
+        raise ProviderError(self.name, "no Overpass mirror answered")
 
     async def search(self, intent: SearchIntent, ctx: SearchContext) -> list[Result]:
         ref = intent.location or intent.destination
@@ -303,24 +356,72 @@ class OsmPlacesProvider(Provider):
         center = ref.place.point
         radius = ref.radius_m or (2500 if ref.place.kind.value in ("district", "poi", "address") else 5000)
         radius = max(300, min(radius, 25_000))
-        query = build_query(intent, center.lat, center.lon, radius, limit=min(120, ctx.max_results * 4))
-        elements = await self._fetch(query)
+        limit = min(150, ctx.max_results * 4)
+        elements = await self._fetch(build_query(intent, center.lat, center.lon, radius, limit=limit))
+        if len(elements) < 6 and not ref.radius_m and radius < 25_000:
+            # Sparse area or rare category: widen once instead of returning almost nothing.
+            radius = min(25_000, radius * 3)
+            elements = await self._fetch(build_query(intent, center.lat, center.lon, radius, limit=limit))
         out: list[Result] = []
         seen: set[str] = set()
         for el in elements:
             r = element_to_result(el, intent, ctx.locale, center)
             if r is None or r.id in seen:
                 continue
+            if r.distance_m is not None and r.distance_m > radius * 1.05:
+                continue
             seen.add(r.id)
             out.append(r)
+        out.sort(key=lambda r: r.distance_m if r.distance_m is not None else 1e12)
+        out = out[: max(ctx.max_results * 2, 40)]
+        await self._enrich_photos(out[:30])
         return out
+
+    async def _enrich_photos(self, results: list[Result]) -> None:
+        """Wikidata image (P18) for venues that link a Wikidata item but have no photo tag."""
+        want = {r.facts["wikidata"]: r for r in results if r.facts.get("wikidata") and not r.facts.get("photo")}
+        if not want:
+            return
+        files: dict[str, str | None] = {}
+        missing = []
+        for qid in want:
+            cached = await self.store.get(f"wd:p18:{qid}", 30 * 86400)
+            if cached is not None:
+                files[qid] = cached or None
+            else:
+                missing.append(qid)
+        if missing:
+            try:
+                data = await self.wikidata.get_json(
+                    "https://www.wikidata.org/w/api.php",
+                    params={
+                        "action": "wbgetentities",
+                        "ids": "|".join(missing[:50]),
+                        "props": "claims",
+                        "format": "json",
+                    },
+                )
+            except ProviderError:
+                data = {}
+            for qid, ent in ((data or {}).get("entities") or {}).items():
+                claims = (ent or {}).get("claims") or {}
+                name = None
+                try:
+                    name = claims["P18"][0]["mainsnak"]["datavalue"]["value"]
+                except (KeyError, IndexError, TypeError):
+                    name = None
+                files[qid] = name
+                await self.store.set(f"wd:p18:{qid}", name or "")
+        for qid, r in want.items():
+            if files.get(qid):
+                r.facts["photo"] = commons_file_url(str(files[qid]))
 
     def _client(self, url: str) -> ProviderHttp:
         if self._shared is not None:
             return self._shared
         if url not in self._mirrors:
             mirror = ProviderHttp(
-                f"osm:{url.split('/')[2]}", rate_per_s=0.5, burst=1, max_retries=1, timeout_s=25, connect_timeout_s=4
+                f"osm:{url.split('/')[2]}", rate_per_s=1, burst=2, max_retries=0, timeout_s=22, connect_timeout_s=4
             )
             # A mirror that fails twice in a row is skipped for five minutes.
             mirror.breaker.failure_threshold = 2
@@ -332,6 +433,7 @@ class OsmPlacesProvider(Provider):
         return {name: h.breaker.state.value for name, h in self._mirrors.items()}
 
     async def aclose(self) -> None:
+        await self.wikidata.aclose()
         for h in self._mirrors.values():
             await h.aclose()
         if self._shared is not None:

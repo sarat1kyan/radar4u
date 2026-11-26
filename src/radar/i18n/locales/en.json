@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "City trip",
   "cat.plan.evening_date": "Evening out",
   "cat.plan.day_trip": "Day trip",
-  "cat.plan.birthday": "Birthday"
+  "cat.plan.birthday": "Birthday",
+  "status.open_until": "Open until {time}",
+  "status.open": "Open",
+  "status.closed_opens": "Closed, opens {time}",
+  "status.closed": "Closed",
+  "status.open_24_7": "Open 24/7",
+  "search.edit": "Edit search",
+  "search.earlier": "Earlier",
+  "search.later": "Later",
+  "home.recent": "Recent searches",
+  "home.near_me_now": "Open near me",
+  "search.share_location": "Share your location to see the nearest places.",
+  "result.open_count": "{count, plural, one {# open right now} other {# open right now}}",
+  "table.status": "Now"
 }

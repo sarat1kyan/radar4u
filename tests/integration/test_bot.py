@@ -77,6 +77,16 @@ async def harness(settings, fixtures, monkeypatch):
         msg = Message(message_id=n["u"], date=datetime.now(UTC), chat=CHAT, from_user=TG_USER, text=text)
         await dp.feed_update(bot, Update(update_id=n["u"], message=msg))
 
+    async def send_location(lat, lon):
+        from aiogram.types import Location
+
+        n["u"] += 1
+        msg = Message(message_id=n["u"], date=datetime.now(UTC), chat=CHAT, from_user=TG_USER,
+                      location=Location(latitude=lat, longitude=lon))
+        await dp.feed_update(bot, Update(update_id=n["u"], message=msg))
+
+    send_text.location = send_location
+
     async def press(data):
         n["u"] += 1
         src = Message(message_id=1, date=datetime.now(UTC), chat=CHAT, text="x")
@@ -195,3 +205,40 @@ async def test_button_builder_with_saved_city(harness):
     await press(first.callback_data)
     card = session.texts()[-1]
     assert "<h2>" in card and "<tg-map" in card and "<table" in card
+
+
+async def test_edit_rerun_and_time_shift(harness):
+    app, session, send_text, press = harness
+    await send_text("flight from Yerevan to Rome on December 5")
+    results = buttons(markups(session)[-1])
+    later = next(b for b in results if b.callback_data.endswith(":+") and b.callback_data.startswith("tp:"))
+    edit = next(b for b in results if b.callback_data.startswith("sb:edit:"))
+    assert edit.style == "primary"
+    await press(later.callback_data)
+    assert "Rome" in session.texts()[-1]
+    await press(edit.callback_data)
+    panel = session.texts()[-1]
+    assert "Yerevan" in panel and "Rome" in panel  # draft restored from the typed search
+    await press("m:home")  # home screen (this user skipped onboarding)
+    home = buttons(markups(session)[-1])
+    rerun = next(b for b in home if b.callback_data.startswith("sb:rerun:"))
+    await press(rerun.callback_data)
+    assert "Rome" in session.texts()[-1]
+
+
+async def test_open_near_me_uses_shared_location(harness):
+    app, session, send_text, press = harness
+    app.resolver.reverse = _fake_reverse  # no network in tests
+    await press("m:home")
+    near = next(b for b in buttons(markups(session)[-1]) if b.callback_data == "sb:near:")
+    assert near.style == "success"
+    await press(near.callback_data)
+    assert "Share your location" in session.texts()[-1]
+    await send_text.location(40.1811, 44.5136)
+    assert session.texts()[-1].startswith("<h3>Restaurants")
+
+
+async def _fake_reverse(lat, lon, language="en"):
+    from radar.geo.resolver import GAZ
+
+    return GAZ.lookup("Yerevan").to_place()

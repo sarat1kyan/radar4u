@@ -202,3 +202,5 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .toast { position: fixed; left: 50%; bottom: calc(90px + var(--bottom)); transform: translateX(-50%); z-index: 30;
   background: color-mix(in srgb, var(--fg) 88%, transparent); color: var(--bg); padding: 10px 16px; border-radius: 12px;
   font-size: 14px; max-width: 90vw; animation: fade .2s; }
+.quick-row { padding: 14px 14px 0; }
+.quick-row .chip { padding: 10px 16px; font-weight: 600; }

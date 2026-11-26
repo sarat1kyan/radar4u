@@ -7,13 +7,40 @@ from typing import Any
 from radar import i18n
 from radar.bot.render import intent_summary, labels, reason_text
 from radar.domain.intents import SearchIntent
+from radar.search.draft import draft_from_intent
 from radar.search.pipeline import SearchOutcome
 from radar.search.ranking import Ranked
+from radar.search.status import open_status, reference_time
 
 
 def ranked_view(r: Ranked, intent: SearchIntent, lang: str) -> dict[str, Any]:
     res = r.result
+    state, change = open_status(res, reference_time(intent))
+    status = None
+    if state == "24_7":
+        status = {"state": "open", "label": i18n.t("status.open_24_7", lang)}
+    elif state == "open":
+        status = {
+            "state": "open",
+            "label": i18n.t("status.open_until", lang, time=change.strftime("%H:%M"))
+            if change
+            else i18n.t("status.open", lang),
+        }
+    elif state == "closed":
+        status = {
+            "state": "closed",
+            "label": i18n.t(
+                "status.closed_opens",
+                lang,
+                time=change.strftime("%a %H:%M")
+                if change and change.date() != reference_time(intent).date()
+                else change.strftime("%H:%M"),
+            )
+            if change
+            else i18n.t("status.closed", lang),
+        }
     return {
+        "status": status,
         "id": res.id,
         "tier": r.tier.name.lower(),
         "domain": res.domain.value,
@@ -75,6 +102,7 @@ def ranked_view(r: Ranked, intent: SearchIntent, lang: str) -> dict[str, Any]:
 def outcome_view(o: SearchOutcome, lang: str, session_id: int | None = None) -> dict[str, Any]:
     return {
         "session_id": session_id,
+        "draft": draft_from_intent(o.intent),
         "summary": intent_summary(o.intent, lang),
         "domain": o.intent.domain.value,
         "missing": o.intent.missing,
@@ -88,6 +116,5 @@ def outcome_view(o: SearchOutcome, lang: str, session_id: int | None = None) -> 
         "provider_errors": o.provider_errors,
         "skipped": o.skipped,
         "queried": o.queried,
-        "partner_only": list(dict.fromkeys(o.partner_only)),
         "took_ms": round(o.total_ms),
     }

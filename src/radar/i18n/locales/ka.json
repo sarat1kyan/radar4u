@@ -412,5 +412,18 @@
   "cat.plan.city_trip": "ქალაქის ტური",
   "cat.plan.evening_date": "საღამო გარეთ",
   "cat.plan.day_trip": "ერთდღიანი ტური",
-  "cat.plan.birthday": "დაბადების დღე"
+  "cat.plan.birthday": "დაბადების დღე",
+  "status.open_until": "ღიაა {time}-მდე",
+  "status.open": "ღიაა",
+  "status.closed_opens": "დახურულია, გაიხსნება {time}",
+  "status.closed": "დახურულია",
+  "status.open_24_7": "24/7 ღიაა",
+  "search.edit": "ძიების შეცვლა",
+  "search.earlier": "უფრო ადრე",
+  "search.later": "უფრო გვიან",
+  "home.recent": "ბოლო ძიებები",
+  "home.near_me_now": "ღიაა ახლოს",
+  "search.share_location": "გააზიარეთ მდებარეობა, რომ ნახოთ უახლოესი ადგილები.",
+  "result.open_count": "{count, plural, one {# ღიაა ახლა} other {# ღიაა ახლა}}",
+  "table.status": "ახლა"
 }

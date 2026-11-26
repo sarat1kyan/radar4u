@@ -916,3 +916,14 @@ EXCLUDE_TRANSPORT = (
     r"\bnot including (transport|flights?)\b|без (учёта )?(дороги|перелёта|транспорта)|"
     r"\bohne (anreise|flug)\b|\bhors transport\b|\bsenza (viaggio|trasporto)\b|\bsin (transporte|vuelos?)\b"
 )
+
+OPEN_NOW = (
+    r"\bopen now\b|\bopen right now\b|\bstill open\b|\bopen late\b|открыт\w* сейчас|сейчас открыт\w*|"
+    r"работает сейчас|բաց է հիմա|ახლა ღიაა|қазір ашық|\bjetzt geöffnet\b|\bjetzt offen\b|\bouvert maintenant\b|"
+    r"\baperto ora\b|\babierto ahora\b"
+)
+NEAR_ME = (
+    r"\bnear me\b|\bnearby\b|\baround me\b|\bclose to me\b|рядом со мной|поблизости|недалеко от меня|"
+    r"\bin meiner nähe\b|\bin der nähe\b|\bprès de moi\b|\bà proximité\b|\bvicino a me\b|\bqui vicino\b|"
+    r"\bcerca de mí\b|\bcerca de aquí\b|մոտակայքում|ახლოს|жақын жерде"
+)

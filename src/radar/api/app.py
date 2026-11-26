@@ -73,6 +73,8 @@ def _clean_draft(d: dict[str, Any]) -> dict[str, Any]:
     for k in ("cat", "day", "time", "sort"):
         if isinstance(d.get(k), str) and len(d[k]) <= 40:
             out[k] = d[k]
+    if d.get("open_now") is True:
+        out["open_now"] = True
     for k in ("pax", "nights", "rooms"):
         if isinstance(d.get(k), int) and 0 < d[k] <= 60:
             out[k] = d[k]

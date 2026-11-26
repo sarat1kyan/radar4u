@@ -1,7 +1,7 @@
 """Regression dataset for the rule parser. Every case must pass; add a case for every parser bug fixed."""
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,6 +11,8 @@ from radar.nlu.rules import parse
 
 CASES = json.loads((Path(__file__).parent / "parser_cases.json").read_text(encoding="utf-8"))
 TODAY = date(2026, 11, 26)
+# Thursday 17:42 local time of the place being searched (wall clock, used by 'now', 'in 2 hours').
+NOW = datetime(2026, 11, 26, 17, 42, tzinfo=UTC)
 
 
 def _name(ref):
@@ -19,7 +21,7 @@ def _name(ref):
 
 @pytest.mark.parametrize("case", CASES, ids=[c["text"][:40] for c in CASES])
 def test_case(case):
-    i = parse(case["text"], today=TODAY).intent
+    i = parse(case["text"], today=TODAY, now=NOW).intent
     assert i.domain.value == case["domain"]
     if "location" in case:
         assert _name(i.location) == case["location"]
