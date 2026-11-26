@@ -41,3 +41,8 @@ def next_after_quiet(now_local: datetime, start: time | None, end: time | None) 
     if candidate <= now_local:
         candidate += timedelta(days=1)
     return candidate
+
+
+def aware(dt: datetime) -> datetime:
+    """SQLite hands back naive datetimes for timezone-aware columns; they are stored as UTC."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
