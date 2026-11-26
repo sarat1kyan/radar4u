@@ -118,7 +118,7 @@ class TicketmasterProvider(Provider):
     def __init__(self, key: str | None = None, http: ProviderHttp | None = None) -> None:
         s = get_settings()
         self.key = key or (s.ticketmaster_key.get_secret_value() if s.ticketmaster_key else None)
-        self.http = http or ProviderHttp("ticketmaster", rate_per_s=4, burst=4, max_retries=1)
+        self.http = http or ProviderHttp("ticketmaster", rate_per_s=2, burst=2, max_retries=1)
 
     def configured(self) -> bool:
         return bool(self.key)

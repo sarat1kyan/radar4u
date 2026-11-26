@@ -5,7 +5,14 @@ from datetime import UTC, datetime
 import pytest
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
-from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage, SendVenue, TelegramMethod
+from aiogram.methods import (
+    AnswerCallbackQuery,
+    EditMessageText,
+    SendMessage,
+    SendRichMessage,
+    SendVenue,
+    TelegramMethod,
+)
 from aiogram.types import CallbackQuery, Chat, Message, Update
 from aiogram.types import User as TgUser
 
@@ -27,11 +34,11 @@ class FakeSession(BaseSession):
 
     async def make_request(self, bot, method, timeout=None):
         self.calls.append(method)
-        if isinstance(method, SendMessage | EditMessageText | SendVenue):
+        if isinstance(method, SendMessage | EditMessageText | SendVenue | SendRichMessage):
             self._mid += 1
-            return Message(
-                message_id=self._mid, date=datetime.now(UTC), chat=CHAT, text=getattr(method, "text", None) or "venue"
-            ).as_(bot)
+            return Message(message_id=self._mid, date=datetime.now(UTC), chat=CHAT, text=_text(method) or "venue").as_(
+                bot
+            )
         if isinstance(method, AnswerCallbackQuery):
             return True
         return True
@@ -43,7 +50,14 @@ class FakeSession(BaseSession):
         pass
 
     def texts(self):
-        return [c.text for c in self.calls if isinstance(c, SendMessage | EditMessageText)]
+        return [_text(c) for c in self.calls if isinstance(c, SendMessage | EditMessageText | SendRichMessage)]
+
+
+def _text(method):
+    rich = getattr(method, "rich_message", None)
+    if rich is not None:
+        return rich.html
+    return getattr(method, "text", None)
 
 
 @pytest.fixture
@@ -95,7 +109,7 @@ async def test_onboarding_then_search_then_details_and_booking(harness):
     texts = session.texts()
     assert any("Searching in Berlin" in t for t in texts)
     final = texts[-1]
-    assert "DEMO DATA" in final and "Looking for" in final
+    assert "(demo)" in final and final.startswith("<h3>Hotels and stays")
     kb = markups(session)[-1]
     first = buttons(kb)[0].callback_data
     assert first.startswith("r:d:")
@@ -118,10 +132,10 @@ async def test_refinement_and_clarification(harness):
     await send_text("hotel in Rome")  # dates missing -> ask
     assert "Which dates" in session.texts()[-1]
     await send_text("from 21.12 to 24.12")
-    assert "Looking for" in session.texts()[-1]
+    assert session.texts()[-1].startswith("<h3>Hotels and stays")
     await send_text("make it cheaper")
     # budget was unset, so cheaper means sorting by price
-    assert "Looking for" in session.texts()[-1]
+    assert session.texts()[-1].startswith("<h3>Hotels and stays")
 
 
 async def test_watch_creates_radar_and_lists_it(harness):
@@ -147,3 +161,37 @@ async def test_unsupported_domain_reports_coverage(harness):
     app, session, send_text, press = harness
     await send_text("train from Frankfurt to Berlin tomorrow")
     assert "None of my connected providers cover this request yet" in session.texts()[-1]
+
+
+async def test_button_builder_with_saved_city(harness):
+    """Regression: saved-city buttons used place ids containing ':' and crashed the callback."""
+    app, session, send_text, press = harness
+    await send_text("/start")
+    await press("l:en")
+    await send_text("Berlin")
+    home = markups(session)[-1]
+    stay = next(b for b in buttons(home) if b.callback_data == "sb:dom:stay")
+    assert stay.style == "primary"
+    await press(stay.callback_data)
+    cats = buttons(markups(session)[-1])
+    await press(next(b.callback_data for b in cats if b.callback_data == "sb:cat:property.hotel"))
+    cities = buttons(markups(session)[-1])
+    berlin = next(b for b in cities if b.text == "Berlin")
+    assert ":" not in berlin.callback_data.split(":", 2)[2]
+    await press(berlin.callback_data)
+    await press("sb:cal:2026-12")  # calendar
+    cal = buttons(markups(session)[-1])
+    assert any(b.callback_data == "sb:day:2026-12-21" for b in cal)
+    await press("sb:day:2026-12-21")
+    await press("sb:nights:2")
+    await press("sb:pax:2")
+    await press("sb:flag:wifi")
+    flags = buttons(markups(session)[-1])
+    assert next(b for b in flags if b.callback_data == "sb:flag:wifi").style == "success"
+    await press("sb:go:")
+    final = session.texts()[-1]
+    assert final.startswith("<h3>Hotels and stays") and "Berlin" in final and "(demo)" in final
+    first = next(b for b in buttons(markups(session)[-1]) if b.callback_data.startswith("r:d:"))
+    await press(first.callback_data)
+    card = session.texts()[-1]
+    assert "<h2>" in card and "<tg-map" in card and "<table" in card

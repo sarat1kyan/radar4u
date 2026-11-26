@@ -1,7 +1,7 @@
 """Structured search intention.
 
 This is the contract between language understanding and everything else. The
-rule parser and LLM backends both produce a SearchIntent; the pipeline only
+rule parser and the button-driven search builder both produce a SearchIntent; the pipeline only
 ever consumes one. Hard constraints and soft preferences are separate lists so
 that relaxing a requirement is always an explicit, visible operation.
 """

@@ -7,7 +7,6 @@ import contextlib
 import logging
 import time as _time
 from datetime import datetime, time, timedelta
-from typing import Any
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -19,11 +18,11 @@ from aiogram.types import CallbackQuery, Message
 from radar import i18n
 from radar.app import App
 from radar.bot import keyboards as kb
-from radar.bot import render
+from radar.bot import render, richrender, ui
 from radar.core.provenance import utcnow
 from radar.core.timeutil import aware, now_in, tz
-from radar.domain.common import DateWindow, Domain, LocationRef, Party, Place, SortMode, StayDates
-from radar.domain.intents import PlanKind, SearchIntent
+from radar.domain.common import DateWindow, Domain, LocationRef, Place, SortMode, StayDates
+from radar.domain.intents import SearchIntent
 from radar.geo.resolver import GAZ
 from radar.nlu.interpreter import UserContext
 from radar.nlu.rules import _required_missing
@@ -91,13 +90,7 @@ async def ask_clarification(message: Message, app: App, user: User, intent: Sear
         )
         return
     if first in ("location", "origin", "destination"):
-        places = [p for p in [ctx.current, ctx.home, *ctx.favorites] if p is not None]
-        seen: set[str] = set()
-        opts = []
-        for p in places:
-            if p.canonical_id not in seen and len(p.canonical_id) <= 40:
-                seen.add(p.canonical_id)
-                opts.append((p.name, p.canonical_id))
+        opts = [(p.name, str(i)) for i, p in enumerate(context_places(ctx))]
         markup = kb.wizard_options(f"p{first[0]}", opts[:6]) if opts and first != "destination" else None
         await message.answer(i18n.t(f"clarify.{first}", lang), reply_markup=markup)
         return
@@ -140,14 +133,25 @@ async def on_text(message: Message, app: App, user: User, state: FSMContext) -> 
     await execute(message, app, user, intent)
 
 
-async def execute(message: Message, app: App, user: User, intent: SearchIntent) -> None:
+async def execute(
+    message: Message, app: App, user: User, intent: SearchIntent, *, edit_message: Message | None = None
+) -> None:
     lang = user.language
     if intent.domain is Domain.PLAN:
-        await run_plan(message, app, user, intent)
+        await run_plan(message, app, user, intent, edit_message=edit_message)
         return
     eligible = app.registry.eligible(intent)
     names = ", ".join(p.display_name for p in eligible.providers) or "-"
-    progress = await message.answer(i18n.t("search.progress", lang, sources=names))
+    wait = (
+        ui.Rich()
+        .h(render.intent_summary(intent, lang, user.time_format).split("\n")[0], 3)
+        .p("<i>" + i18n.t("search.progress", lang, sources=render.esc(names)) + "</i>")
+    )
+    wait_text = i18n.t("search.progress", lang, sources=names)
+    if edit_message is not None:
+        progress = await ui.edit(edit_message, wait, wait_text)
+    else:
+        progress = await ui.send(message, wait, wait_text)
     last_edit = [0.0]
 
     async def on_progress(name: str, done: int, total: int) -> None:
@@ -155,7 +159,7 @@ async def execute(message: Message, app: App, user: User, intent: SearchIntent) 
             return
         last_edit[0] = _time.monotonic()
         with contextlib.suppress(TelegramBadRequest):
-            await progress.edit_text(i18n.t("search.progress", lang, sources=names) + f" {done}/{total}")
+            await ui.edit(progress, wait.__class__(parts=[*wait.parts, f"<p>{done}/{total}</p>"]), wait_text)
 
     outcome = await app.pipeline.run(intent, search_ctx(user), on_progress=on_progress)
     async with app.db.session() as s:
@@ -178,21 +182,11 @@ async def execute(message: Message, app: App, user: User, intent: SearchIntent) 
 
 
 async def show_page(msg: Message, user: User, sid: int, outcome: SearchOutcome, page: int, *, edit: bool) -> None:
-    text, pages = render.outcome_text(outcome, user.language, page, user.time_format)
-    chunk = outcome.ranked[page * render.PAGE_SIZE : (page + 1) * render.PAGE_SIZE]
-    markup = (
-        kb.results(sid, [r.result.id for r in chunk], page, pages, user.language, page * render.PAGE_SIZE + 1)
-        if outcome.ranked
-        else None
-    )
-    try:
-        if edit:
-            await msg.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
-        else:
-            await msg.answer(text, reply_markup=markup, disable_web_page_preview=True)
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc):
-            await msg.answer(text, reply_markup=markup, disable_web_page_preview=True)
+    r, fallback, markup = richrender.results_view(outcome, sid, user.language, page, user.time_format)
+    if edit:
+        await ui.edit(msg, r, fallback, markup)
+    else:
+        await ui.send(msg, r, fallback, markup)
 
 
 async def load_outcome(app: App, user: User, sid: int) -> SearchOutcome | None:
@@ -250,11 +244,10 @@ async def on_result(cb: CallbackQuery, callback_data: kb.ResultCb, app: App, use
             address=(r.address or r.subtitle or "")[:100] or " ",
         )
     else:
-        await cb.message.answer(
-            render.result_card(item, outcome.intent, user.language, user.time_format),
-            reply_markup=kb.result_actions(callback_data.s, r, user.language),
-            disable_web_page_preview=True,
+        rich, fallback, markup = richrender.card_view(
+            item, outcome.intent, callback_data.s, user.language, user.time_format
         )
+        await ui.send(cb.message, rich, fallback, markup)
     await cb.answer()
 
 
@@ -293,10 +286,19 @@ async def on_clarify(cb: CallbackQuery, callback_data: kb.WizCb, app: App, user:
         await execute(cb.message, app, user, intent)
 
 
-def _place_by_id(pid: str, ctx: UserContext) -> Place | None:
+def context_places(ctx: UserContext) -> list[Place]:
+    """Saved places in a stable order; buttons refer to them by index (callback data can't hold ':')."""
+    out: list[Place] = []
     for p in [ctx.current, ctx.home, *ctx.favorites]:
-        if p is not None and p.canonical_id == pid:
-            return p
+        if p is not None and p.canonical_id not in {x.canonical_id for x in out}:
+            out.append(p)
+    return out[:6]
+
+
+def _place_by_id(pid: str, ctx: UserContext) -> Place | None:
+    places = context_places(ctx)
+    if pid.isdigit() and int(pid) < len(places):
+        return places[int(pid)]
     e = GAZ.by_id(pid)
     return e.to_place() if e else None
 
@@ -319,163 +321,27 @@ def _apply_quick_date(intent: SearchIntent, v: str, ctx: UserContext) -> None:
         )
 
 
-# --- structured search wizard ---------------------------------------------------------------------
-
-
-@router.callback_query(kb.MenuCb.filter(F.a == "search"))
-async def on_menu_search(cb: CallbackQuery, user: User, state: FSMContext) -> None:
-    await state.set_state(None)
-    if isinstance(cb.message, Message):
-        await cb.message.answer(
-            i18n.t("search.pick_domain", user.language), reply_markup=kb.wizard_domains(user.language)
-        )
-    await cb.answer()
-
-
-@router.callback_query(kb.WizCb.filter(F.st.in_({"d", "c", "t", "n", "k"})))
-async def on_wizard(cb: CallbackQuery, callback_data: kb.WizCb, app: App, user: User, state: FSMContext) -> None:
-    data = await state.get_data()
-    wiz: dict[str, Any] = dict(data.get("wiz") or {})
-    ctx = await user_context(user, state)
-    st, v = callback_data.st, callback_data.v
-    if st == "d":
-        wiz = {"domain": v}
-    elif st == "c":
-        wiz["place"] = v
-    elif st == "t":
-        wiz["date"] = v
-    elif st == "n":
-        wiz["party"] = int(v)
-    elif st == "k":
-        wiz["plan_kind"] = v
-    await state.update_data(wiz=wiz)
-    await cb.answer()
-    if isinstance(cb.message, Message):
-        await _wizard_next(cb.message, app, user, state, wiz, ctx)
-
-
-async def _wizard_next(
-    msg: Message, app: App, user: User, state: FSMContext, wiz: dict[str, Any], ctx: UserContext
-) -> None:
-    lang = user.language
-    domain = Domain(wiz["domain"])
-    if "place" not in wiz:
-        places = [p for p in [ctx.current, ctx.home, *ctx.favorites] if p is not None]
-        opts = list(dict.fromkeys((p.name, p.canonical_id) for p in places if len(p.canonical_id) <= 40))[:6]
-        await state.set_state(Wizard.city)
-        key = "clarify.origin" if domain.is_transport else "search.ask_city"
-        await msg.answer(i18n.t(key, lang), reply_markup=kb.wizard_options("c", opts) if opts else None)
-        return
-    if domain.is_transport and "destination" not in wiz:
-        await state.set_state(Wizard.destination)
-        await msg.answer(i18n.t("clarify.destination", lang))
-        return
-    if domain is Domain.PLAN and "plan_kind" not in wiz:
-        await msg.answer(
-            i18n.t("search.pick_domain", lang),
-            reply_markup=kb.wizard_options(
-                "k",
-                [
-                    (k.value.replace("_", " "), k.value)
-                    for k in (PlanKind.ROMANTIC_WEEKEND, PlanKind.CITY_TRIP, PlanKind.EVENING_DATE, PlanKind.DAY_TRIP)
-                ],
-            ),
-        )
-        return
-    if "date" not in wiz:
-        opts = [
-            (i18n.t("search.today", lang), "0"),
-            (i18n.t("search.tomorrow", lang), "1"),
-            (i18n.t("search.weekend", lang), "w"),
-        ]
-        if domain in (Domain.EVENT, Domain.REAL_ESTATE, Domain.SHOPPING, Domain.WELLNESS):
-            opts.append((i18n.t("search.any_date", lang), "-"))
-        await msg.answer(i18n.t("search.ask_date", lang), reply_markup=kb.wizard_options("t", opts))
-        return
-    if "party" not in wiz and domain in (Domain.DINING, Domain.STAY, Domain.WELLNESS, Domain.PLAN):
-        await msg.answer(
-            i18n.t("search.ask_party", lang),
-            reply_markup=kb.wizard_options(
-                "n", [(i18n.t("wizard.party", lang, count=n), str(n)) for n in (1, 2, 3, 4, 6)]
-            ),
-        )
-        return
-    await state.update_data(wiz=None)
-    await state.set_state(None)
-    intent = await _wizard_intent(app, wiz, ctx)
-    if intent is None:
-        await msg.answer(i18n.t("error.unknown_place", lang, place=render.esc(wiz.get("place", ""))))
-        return
-    await execute(msg, app, user, intent)
-
-
-async def _resolve(app: App, value: str, ctx: UserContext) -> LocationRef | None:
-    p = _place_by_id(value, ctx)
-    if p is not None:
-        return LocationRef(text=p.name, place=p)
-    ref = await app.resolver.resolve(value, language=ctx.language)
-    return ref if ref.place else None
-
-
-async def _wizard_intent(app: App, wiz: dict[str, Any], ctx: UserContext) -> SearchIntent | None:
-    domain = Domain(wiz["domain"])
-    intent = SearchIntent(domain=domain, language=ctx.language, party=Party(adults=int(wiz.get("party", 1))))
-    loc = await _resolve(app, wiz["place"], ctx)
-    if loc is None:
-        return None
-    if domain.is_transport:
-        intent.origin = loc
-        dest = await _resolve(app, wiz["destination"], ctx)
-        if dest is None:
-            return None
-        intent.destination = dest
-    else:
-        intent.location = loc
-    if domain is Domain.PLAN:
-        intent.plan_kind = PlanKind(wiz.get("plan_kind", "city_trip"))
-    if wiz.get("date") not in (None, "-"):
-        _apply_quick_date(intent, wiz["date"], ctx)
-    if domain is Domain.GROUND:
-        intent.categories.append("mode:multimodal")
-    intent.missing = _required_missing(intent)
-    return intent
-
-
-@router.message(Wizard.city, F.text)
-async def on_wizard_city(message: Message, app: App, user: User, state: FSMContext) -> None:
-    data = await state.get_data()
-    wiz = dict(data.get("wiz") or {})
-    wiz["place"] = (message.text or "").strip()[:120]
-    await state.update_data(wiz=wiz)
-    await state.set_state(None)
-    await _wizard_next(message, app, user, state, wiz, await user_context(user, state))
-
-
-@router.message(Wizard.destination, F.text)
-async def on_wizard_destination(message: Message, app: App, user: User, state: FSMContext) -> None:
-    data = await state.get_data()
-    wiz = dict(data.get("wiz") or {})
-    wiz["destination"] = (message.text or "").strip()[:120]
-    await state.update_data(wiz=wiz)
-    await state.set_state(None)
-    await _wizard_next(message, app, user, state, wiz, await user_context(user, state))
-
-
 # --- plans ----------------------------------------------------------------------------------------
 
 
-async def run_plan(message: Message, app: App, user: User, intent: SearchIntent) -> None:
-    progress = await message.answer(i18n.t("plan.building", user.language))
+async def run_plan(
+    message: Message, app: App, user: User, intent: SearchIntent, *, edit_message: Message | None = None
+) -> None:
+    lang = user.language
+    wait = ui.Rich().p("<i>" + i18n.t("plan.building", lang) + "</i>")
+    if edit_message is not None:
+        progress = await ui.edit(edit_message, wait, i18n.t("plan.building", lang))
+    else:
+        progress = await ui.send(message, wait, i18n.t("plan.building", lang))
     try:
         itinerary = await asyncio.wait_for(
             app.planner.build(intent, search_ctx(user)), timeout=app.settings.search_timeout_s * 3
         )
     except (TimeoutError, ValueError):
-        await progress.edit_text(i18n.t("error.generic", user.language))
+        await progress.edit_text(i18n.t("error.generic", lang))
         return
     async with app.db.session() as s:
         s.add(ItineraryRow(user_id=user.id, title=itinerary.title, data=itinerary.model_dump(mode="json")))
         await repo.save_search(s, user, intent, [], {"plan": True})
-    await progress.edit_text(
-        render.itinerary_text(itinerary, user.language, user.time_format), disable_web_page_preview=True
-    )
+    rich, fallback = richrender.itinerary_view(itinerary, lang, user.time_format)
+    await ui.edit(progress, rich, fallback, ui.kb([[(i18n.t("search.new", lang), kb.MenuCb(a="home").pack(), None)]]))

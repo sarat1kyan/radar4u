@@ -13,8 +13,6 @@ for var in (
     "TRAVELPAYOUTS_TOKEN",
     "LITEAPI_KEY",
     "TICKETMASTER_API_KEY",
-    "RADAR_ANTHROPIC_API_KEY",
-    "RADAR_OPENAI_API_KEY",
 ):
     os.environ.pop(var, None)
 

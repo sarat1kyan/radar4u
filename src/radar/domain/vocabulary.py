@@ -1,6 +1,6 @@
 """Controlled vocabulary of constraint keys.
 
-One list drives the rule-based parser, the LLM extraction schema (as an enum),
+One list drives the rule-based parser, the filter buttons,
 result attributes and filtering. Adding a constraint means adding it here and
 teaching at least one provider to report it; until a provider reports it,
 results carry Tri.UNKNOWN for that key and it can never produce a strict match.

@@ -63,14 +63,6 @@ class Settings(BaseSettings):
     liteapi_key: SecretStr | None = Field(None, alias="LITEAPI_KEY")
     ticketmaster_key: SecretStr | None = Field(None, alias="TICKETMASTER_API_KEY")
 
-    # Language understanding. "rules" works offline; LLM backends are optional.
-    nlu_backend: Literal["rules", "anthropic", "openai"] = Field("rules", alias="RADAR_NLU_BACKEND")
-    anthropic_api_key: SecretStr | None = Field(None, alias="RADAR_ANTHROPIC_API_KEY")
-    anthropic_model: str | None = Field(None, alias="RADAR_ANTHROPIC_MODEL")
-    openai_api_key: SecretStr | None = Field(None, alias="RADAR_OPENAI_API_KEY")
-    openai_base_url: str = Field("https://api.openai.com/v1", alias="RADAR_OPENAI_BASE_URL")
-    openai_model: str | None = Field(None, alias="RADAR_OPENAI_MODEL")
-
     # Set when RADAR earns money (ads, subscriptions, commissions). Providers whose free tier
     # is non-commercial are then skipped unless their URL points at a self-hosted instance.
     commercial: bool = Field(False, alias="RADAR_COMMERCIAL")

@@ -69,6 +69,13 @@ SELECTORS: dict[str, list[str]] = {
     "event:ski": ['["landuse"="winter_sports"]', '["sport"="skiing"]["leisure"]'],
     "event:sports": ['["leisure"="stadium"]'],
     "event:workshop": ['["amenity"="arts_centre"]'],
+    # stays (directory only: no prices or room availability)
+    "property:hotel": ['["tourism"="hotel"]'],
+    "property:hostel": ['["tourism"="hostel"]'],
+    "property:guesthouse": ['["tourism"="guest_house"]'],
+    "property:apartment": ['["tourism"="apartment"]'],
+    "property:aparthotel": ['["tourism"="apartment"]', '["tourism"="hotel"]["hotel"="aparthotel"]'],
+    "stay:*": ['["tourism"~"^(hotel|hostel|guest_house|apartment|motel)$"]'],
     "event:*": ['["tourism"~"^(museum|gallery|theme_park)$"]', '["amenity"~"^(theatre|cinema|arts_centre)$"]'],
 }
 
@@ -87,6 +94,7 @@ ATTRIBUTE_TAGS: dict[str, tuple[str, ...]] = {
     "pet_friendly": ("dog",),
     "sauna": ("sauna",),
     "pool": ("swimming_pool",),
+    "breakfast": ("breakfast",),
 }
 
 
@@ -102,9 +110,12 @@ def build_query(intent: SearchIntent, lat: float, lon: float, radius_m: int, lim
     cats = intent.categories
     keys = [c for c in cats if c in SELECTORS]
     if not keys:
-        keys = {Domain.DINING: ["dining:*"], Domain.WELLNESS: ["wellness:*"], Domain.EVENT: ["event:*"]}.get(
-            intent.domain, ["dining:*"]
-        )
+        keys = {
+            Domain.DINING: ["dining:*"],
+            Domain.WELLNESS: ["wellness:*"],
+            Domain.EVENT: ["event:*"],
+            Domain.STAY: ["stay:*"],
+        }.get(intent.domain, ["dining:*"])
     cuisine = _cuisine_filter(cats) if intent.domain is Domain.DINING else ""
     clauses = []
     for key in keys:
@@ -135,6 +146,26 @@ def _wifi(tags: dict[str, str]) -> Tri:
     if v in ("no",):
         return Tri.NO
     return Tri.YES if v in ("wlan", "yes", "wifi") else Tri.UNKNOWN
+
+
+def commons_file_url(name: str, width: int = 960) -> str:
+    """Resized image from Wikimedia Commons. Commons serves fixed widths (250, 330, 500, 960, 1280...)."""
+    from urllib.parse import quote
+
+    file = name.removeprefix("File:").strip().replace(" ", "_")
+    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(file)}?width={width}"
+
+
+def photo_url(tags: dict[str, str]) -> str | None:
+    commons = tags.get("wikimedia_commons", "")
+    if commons.startswith("File:"):
+        return commons_file_url(commons)
+    img = tags.get("image", "")
+    if img.startswith("File:"):
+        return commons_file_url(img)
+    if img.startswith("https://") and img.lower().split("?")[0].endswith((".jpg", ".jpeg", ".png", ".webp")):
+        return img
+    return None
 
 
 def element_to_result(el: dict[str, Any], intent: SearchIntent, lang: str, origin: GeoPoint) -> Result | None:
@@ -175,6 +206,14 @@ def element_to_result(el: dict[str, Any], intent: SearchIntent, lang: str, origi
         "opening_hours": tags.get("opening_hours"),
         "osm": osm_ref,
     }
+    if (stars := tags.get("stars")) and stars[:1].isdigit():
+        facts["stars"] = int(stars[0])
+    if (rooms := tags.get("rooms")) and rooms.isdigit():
+        facts["rooms"] = int(rooms)
+    if photo := photo_url(tags):
+        facts["photo"] = photo
+    if tags.get("wikidata", "").startswith("Q"):
+        facts["wikidata"] = tags["wikidata"]
     if tags.get("description"):
         # Untrusted free text: stored for display only, never fed to language models.
         facts["description"] = tags["description"][:300]
@@ -214,6 +253,7 @@ class OsmPlacesProvider(Provider):
         Capability(Domain.DINING, monitoring_allowed=True, min_monitor_interval_s=86400, cost_units=0.5),
         Capability(Domain.WELLNESS, monitoring_allowed=True, min_monitor_interval_s=86400, cost_units=0.5),
         Capability(Domain.EVENT, monitoring_allowed=False, cost_units=0.5),
+        Capability(Domain.STAY, monitoring_allowed=False, cost_units=0.5),
     )
 
     def __init__(self, http: ProviderHttp | None = None, cache_ttl_s: float = 3600) -> None:

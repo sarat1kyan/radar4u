@@ -1,9 +1,9 @@
 """Turns a message into a validated, location-resolved SearchIntent.
 
-Backend selection: the rule parser always runs first (cheap, offline,
-deterministic). A configured LLM backend is consulted only when the rule result
-is weak, and its output must survive the same validation. Any LLM failure
-falls back to the rule result; the user never waits on a broken model.
+Everything here is deterministic: the multilingual rule parser reads the text,
+follow-ups refine the previous intent, missing places are filled from the
+user's saved context and resolved through the geocoder. Anything the parser
+cannot read is reported as missing so the bot can offer buttons for it.
 """
 
 from __future__ import annotations
@@ -12,18 +12,14 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from radar.config import Settings
 from radar.core.timeutil import now_in, tz
 from radar.domain.common import LocationRef, Place
 from radar.domain.intents import SearchIntent
 from radar.geo.resolver import GeoResolver
-from radar.nlu.llm.base import LLMBackend, LLMUnavailable, to_search_intent
 from radar.nlu.refine import is_followup, refine
 from radar.nlu.rules import _required_missing, parse
 
 log = logging.getLogger(__name__)
-
-LLM_CONFIDENCE_THRESHOLD = 0.7
 
 
 @dataclass
@@ -55,23 +51,9 @@ class Interpretation:
         return bool(self.intent.missing)
 
 
-def build_llm(settings: Settings) -> LLMBackend | None:
-    if settings.nlu_backend == "anthropic" and settings.anthropic_api_key and settings.anthropic_model:
-        from radar.nlu.llm.anthropic_backend import AnthropicBackend
-
-        return AnthropicBackend(settings.anthropic_api_key.get_secret_value(), settings.anthropic_model)
-    if settings.nlu_backend == "openai" and settings.openai_model:
-        from radar.nlu.llm.openai_compat import OpenAICompatBackend
-
-        key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
-        return OpenAICompatBackend(settings.openai_base_url, settings.openai_model, key)
-    return None
-
-
 class Interpreter:
-    def __init__(self, resolver: GeoResolver, llm: LLMBackend | None = None) -> None:
+    def __init__(self, resolver: GeoResolver) -> None:
         self.resolver = resolver
-        self.llm = llm
 
     def _today(self, ctx: UserContext) -> tuple[date, str]:
         zone = (ctx.anchor.timezone if ctx.anchor else None) or ctx.timezone or "UTC"
@@ -96,32 +78,9 @@ class Interpreter:
             result = Interpretation(intent=intent, source="rules", confidence=1.0, refined=True)
         else:
             result = Interpretation(intent=fresh.intent, source="rules", confidence=fresh.confidence)
-            if self.llm is not None and (
-                fresh.confidence < LLM_CONFIDENCE_THRESHOLD or "domain" in fresh.intent.missing
-            ):
-                llm_intent = await self._llm(text, today, zone, ctx.language, previous)
-                if llm_intent is not None:
-                    result = Interpretation(intent=llm_intent, source=self.llm.name, confidence=0.8)
 
         await self._complete(result, ctx, online=online)
         return result
-
-    async def _llm(
-        self, text: str, today: date, zone: str, ui_language: str, previous: SearchIntent | None
-    ) -> SearchIntent | None:
-        assert self.llm is not None
-        try:
-            li = await self.llm.extract(text, today=today, zone=zone, previous=previous)
-        except LLMUnavailable as exc:
-            log.info("llm backend unavailable, using rules: %s", exc)
-            return None
-        except Exception:  # never let a backend bug take the bot down
-            log.exception("llm backend failed")
-            return None
-        intent = to_search_intent(li, text, zone, ui_language)
-        if intent is not None:
-            intent.missing = _required_missing(intent)
-        return intent
 
     async def _complete(self, result: Interpretation, ctx: UserContext, *, online: bool) -> None:
         intent = result.intent

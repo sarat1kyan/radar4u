@@ -229,6 +229,48 @@ class GeoResolver:
             ref.alternatives = _ambiguous_alternatives(places)
         return ref
 
+    async def reverse(self, lat: float, lon: float, *, language: str = "en") -> Place:
+        """Name a shared location ("Kentron, Yerevan") instead of showing raw coordinates."""
+        point = GeoPoint(lat=lat, lon=lon)
+        near = GAZ.nearest(point)
+        cc = near.country if near and point.distance_m(GeoPoint(lat=near.lat, lon=near.lon)) < 60_000 else None
+        name = f"{lat:.4f}, {lon:.4f}"
+        key = f"rev|{lat:.3f}|{lon:.3f}|{language}"
+        cached = self.cache.get(key)
+        if cached is not None:
+            name, cc = cached
+        else:
+            try:
+                data = await self.nominatim.get_json(
+                    f"{get_settings().nominatim_url}/reverse",
+                    params={
+                        "lat": f"{lat:.5f}",
+                        "lon": f"{lon:.5f}",
+                        "format": "jsonv2",
+                        "zoom": 14,
+                        "accept-language": language,
+                    },
+                )
+                addr = (data or {}).get("address") or {}
+                district = next((addr[k] for k in ("suburb", "city_district", "neighbourhood") if addr.get(k)), None)
+                town = addr.get("city") or addr.get("town") or addr.get("village")
+                label = ", ".join(p for p in (district, town) if p)
+                if label:
+                    name = label
+                cc = (addr.get("country_code") or "").upper() or cc
+                self.cache.set(key, (name, cc))
+            except ProviderError:
+                pass
+        return Place(
+            canonical_id=f"geo:{lat:.5f},{lon:.5f}",
+            name=name,
+            kind=PlaceKind.COORDINATES,
+            country_code=cc,
+            point=point,
+            timezone=timezone_for(point, cc),
+            source="location",
+        )
+
     async def _online(self, text: str, language: str, country_bias: str | None) -> list[Place]:
         try:
             return await self._nominatim(text, language, country_bias)

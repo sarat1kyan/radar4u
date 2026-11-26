@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from radar import i18n
 from radar.app import App
 from radar.bot import keyboards as kb
-from radar.bot import render
+from radar.bot import render, ui
 from radar.domain.common import Place
 from radar.storage import repo
 from radar.storage.models import User
@@ -39,15 +39,20 @@ async def _save(app: App, user: User, **fields: object) -> User:
         return u
 
 
+async def _home(message: Message, app: App, user: User) -> None:
+    from radar.bot.handlers.builder import home
+
+    r, fb, markup = home(user, app.settings.webapp_url)
+    await ui.send(message, r, fb, markup)
+
+
 @router.message(CommandStart())
 async def on_start(message: Message, app: App, user: User, state: FSMContext) -> None:
     await state.clear()
     if not user.onboarded:
         await message.answer(i18n.t("start.pick_language", user.language), reply_markup=kb.languages())
         return
-    await message.answer(
-        i18n.t("start.welcome", user.language), reply_markup=kb.main_menu(user.language, app.settings.webapp_url)
-    )
+    await _home(message, app, user)
 
 
 @router.callback_query(kb.LangCb.filter())
@@ -61,9 +66,7 @@ async def on_language(cb: CallbackQuery, callback_data: kb.LangCb, app: App, use
         await state.set_state(Onboarding.city)
         await cb.message.answer(i18n.t("start.pick_city", lang), reply_markup=kb.location_request(lang))
     else:
-        await cb.message.answer(
-            i18n.t("settings.saved", lang), reply_markup=kb.main_menu(lang, app.settings.webapp_url)
-        )
+        await _home(cb.message, app, user)
 
 
 async def _set_home_from_text(app: App, user: User, text: str) -> Place | None:
@@ -100,9 +103,7 @@ async def _finish_onboarding(message: Message, app: App, user: User, state: FSMC
     await state.set_state(None)
     user = await _save(app, user, onboarded=True)
     await message.answer(i18n.t("start.done", user.language), reply_markup=ReplyKeyboardRemove())
-    await message.answer(
-        i18n.t("start.welcome", user.language), reply_markup=kb.main_menu(user.language, app.settings.webapp_url)
-    )
+    await _home(message, app, user)
 
 
 @router.message(Command("help"))
@@ -138,10 +139,13 @@ async def on_location(message: Message, app: App, user: User, state: FSMContext)
     loc = message.location
     if loc is None:
         return
-    ref = await app.resolver.resolve(f"{loc.latitude:.5f},{loc.longitude:.5f}", language=user.language)
-    if ref.place is not None:
-        # Kept only in the conversation state, never written to the database.
-        await state.update_data(current=ref.place.model_dump(mode="json"))
+    place = await app.resolver.reverse(loc.latitude, loc.longitude, language=user.language)
+    # Kept only in the conversation state, never written to the database.
+    await state.update_data(current=place.model_dump(mode="json"))
+    from radar.bot.handlers.builder import on_builder_location
+
+    if await on_builder_location(message, state, user, place):
+        return
     await message.answer(i18n.t("location.saved", user.language), reply_markup=ReplyKeyboardRemove())
 
 

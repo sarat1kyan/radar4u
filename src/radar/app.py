@@ -11,7 +11,7 @@ from radar.config import Settings, get_settings
 from radar.geo.resolver import GeoResolver
 from radar.itinerary.planner import Planner
 from radar.monitoring.engine import RadarEngine, RadarService
-from radar.nlu.interpreter import Interpreter, build_llm
+from radar.nlu.interpreter import Interpreter
 from radar.providers.fx import FxService
 from radar.providers.registry import ProviderRegistry, build_registry
 from radar.providers.weather import WeatherService
@@ -39,8 +39,6 @@ class App:
         await self.resolver.aclose()
         await self.fx.aclose()
         await self.weather.aclose()
-        if self.interpreter.llm is not None:
-            await self.interpreter.llm.aclose()
         await self.db.dispose()
 
 
@@ -66,7 +64,7 @@ def build_app(settings: Settings | None = None, registry: ProviderRegistry | Non
         settings=s,
         db=db,
         resolver=resolver,
-        interpreter=Interpreter(resolver, build_llm(s)),
+        interpreter=Interpreter(resolver),
         registry=registry,
         fx=fx,
         weather=weather,

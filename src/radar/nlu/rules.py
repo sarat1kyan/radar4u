@@ -1,9 +1,8 @@
 """Deterministic, offline request parser.
 
-It is the default backend and the fallback whenever an LLM backend is not
-configured, fails, refuses, or returns something that does not validate. It
-never invents values: anything it cannot read stays empty and is reported via
-`missing` so the bot can ask.
+It is the only component that reads free text. It never invents values:
+anything it cannot read stays empty and is reported via `missing`, and the
+bot offers buttons for it.
 """
 
 from __future__ import annotations

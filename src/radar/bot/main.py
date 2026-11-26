@@ -27,7 +27,7 @@ from aiogram.types import (
 from radar import i18n
 from radar.app import App
 from radar.bot import render
-from radar.bot.handlers import booking, common, radars, search
+from radar.bot.handlers import booking, builder, common, radars, search
 from radar.bot.middlewares import UserMiddleware
 from radar.monitoring.engine import Notifier
 from radar.storage.models import Notification, User
@@ -83,7 +83,7 @@ def build_dispatcher(app: App) -> Dispatcher:
     dp.message.outer_middleware(mw)
     dp.callback_query.outer_middleware(mw)
     # Order matters: the free-text search handler must come last.
-    routers = (common.router, radars.router, booking.router, search.router)
+    routers = (common.router, builder.router, radars.router, booking.router, search.router)
     for r in routers:
         # Routers are module singletons; allow rebuilding a dispatcher (tests, webhook + polling tools).
         r._parent_router = None
