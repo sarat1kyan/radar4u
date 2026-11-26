@@ -1,0 +1,51 @@
+# Local stack: PostgreSQL, Redis, the bot (polling + radar worker) and the API/Mini App.
+# Secrets come from .env (never committed). See .env.example.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radar}
+      POSTGRES_DB: radar
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  migrate:
+    build: .
+    command: ["migrate"]
+    env_file: .env
+    environment: &dbenv
+      RADAR_DATABASE_URL: postgresql+asyncpg://radar:${POSTGRES_PASSWORD:-radar}@db:5432/radar
+      RADAR_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db: {condition: service_healthy}
+
+  bot:
+    build: .
+    command: ["bot"]
+    env_file: .env
+    environment: *dbenv
+    restart: unless-stopped
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+
+  api:
+    build: .
+    command: ["api"]
+    env_file: .env
+    environment: *dbenv
+    ports: ["8080:8080"]
+    restart: unless-stopped
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+volumes:
+  pgdata:

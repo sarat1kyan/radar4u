@@ -201,6 +201,7 @@ def _next_weekday(today: date, wd: int, strictly_next: bool = False) -> date:
 def parse_dates(text: str, today: date) -> DateParse:
     res = DateParse()
     low = text.lower()
+    m: re.Match[str] | None
 
     def mark(m: re.Match[str]) -> None:
         res.spans.append(m.span())

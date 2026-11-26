@@ -125,7 +125,7 @@ def rank(items: list[Ranked], intent: SearchIntent, sort: SortMode | None = None
             / max(1, len(rep.pref_met) + len(rep.pref_unmet) + len(rep.pref_unknown)),
             "price": _norm(_price_value(it), p_lo, p_hi, invert=True),
             "distance": _norm(r.distance_m, d_lo, d_hi, invert=True),
-            "rating": rating_strength(r) if r.rating else 0.3,
+            "rating": rating_strength(r) or 0.3,
             "duration": _norm(r.duration_min, u_lo, u_hi, invert=True),
             "earliest": _norm(_ts(r.starts_at), s_lo, s_hi, invert=True),
             "freshness": FRESHNESS_SCORE.get(r.provenance.freshness, 0.5),

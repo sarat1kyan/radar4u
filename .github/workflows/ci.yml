@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: radar
+          POSTGRES_PASSWORD: radar
+          POSTGRES_DB: radar_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U radar" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: mypy
+      - name: tests (SQLite)
+        run: pytest -q
+      - name: tests (PostgreSQL)
+        run: pytest -q tests/integration
+        env:
+          RADAR_TEST_DATABASE_URL: postgresql+asyncpg://radar:radar@localhost:5432/radar_test
+      - name: migrations are in sync with models
+        env:
+          RADAR_DATABASE_URL: postgresql+asyncpg://radar:radar@localhost:5432/radar_test
+        run: |
+          python - <<'PY'
+          import asyncio
+          from sqlalchemy import text
+          from sqlalchemy.ext.asyncio import create_async_engine
+          async def reset():
+              e = create_async_engine("postgresql+asyncpg://radar:radar@localhost:5432/radar_test")
+              async with e.begin() as c:
+                  await c.execute(text("DROP SCHEMA public CASCADE"))
+                  await c.execute(text("CREATE SCHEMA public"))
+              await e.dispose()
+          asyncio.run(reset())
+          PY
+          alembic upgrade head
+          alembic check
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t radar4u:ci .

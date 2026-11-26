@@ -109,9 +109,13 @@ def refine(previous: SearchIntent, text: str, *, today: date, zone: str | None) 
     new_cuisine = [c for c in fresh.categories if c.startswith("cuisine:")]
     if new_cuisine:
         out.categories = [c for c in out.categories if not c.startswith("cuisine:")] + new_cuisine
-    for c in fresh.categories:
-        if not c.startswith("cuisine:") and c not in out.categories and c.split(":")[0] in ("place", "event", "near"):
-            out.categories.append(c)
+    for cat in fresh.categories:
+        if (
+            not cat.startswith("cuisine:")
+            and cat not in out.categories
+            and cat.split(":")[0] in ("place", "event", "near")
+        ):
+            out.categories.append(cat)
     if fresh.monitor is not None:
         out.monitor = fresh.monitor
 

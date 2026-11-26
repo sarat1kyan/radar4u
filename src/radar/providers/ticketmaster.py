@@ -34,7 +34,8 @@ CLASSIFICATION = {
 
 def geohash(lat: float, lon: float, precision: int = 7) -> str:
     lat_rng, lon_rng = [-90.0, 90.0], [-180.0, 180.0]
-    bits, bit, ch, even, out = [16, 8, 4, 2, 1], 0, 0, True, []
+    bits, bit, ch, even = [16, 8, 4, 2, 1], 0, 0, True
+    out: list[str] = []
     while len(out) < precision:
         rng, val = (lon_rng, lon) if even else (lat_rng, lat)
         mid = (rng[0] + rng[1]) / 2

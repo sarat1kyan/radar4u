@@ -91,7 +91,7 @@ def intent_summary(intent: SearchIntent, lang: str, clock: str = "24h") -> str:
 
 
 def _place_name(ref: Any) -> str:
-    return ref.place.name if ref.place else ref.text
+    return str(ref.place.name if ref.place else ref.text)
 
 
 def _duration(minutes: int | None, lang: str) -> str:
@@ -453,10 +453,10 @@ def itinerary_text(it: Itinerary, lang: str, clock: str = "24h") -> str:
         day = (item.start.date() - start_day).days + 1 if start_day else 1
         if day != current_day:
             current_day = day
-            w = it.weather.get(item.start.date().isoformat())
+            wx = it.weather.get(item.start.date().isoformat())
             head = f"\n<b>{i18n.t('plan.day', lang, n=day)}</b> - {i18n.fdate(item.start, lang)}"
-            if w:
-                head += " - " + i18n.t("plan.weather", lang, summary=i18n.t(f"weather.{w}", lang))
+            if wx:
+                head += " - " + i18n.t("plan.weather", lang, summary=i18n.t(f"weather.{wx}", lang))
             lines.append(head)
         status = i18n.t(f"plan.item.{item.status.value}", lang) if item.status is not ItemStatus.EMPTY else ""
         when = f"{i18n.ftime(item.start, lang, clock)}-{i18n.ftime(item.end, lang, clock)}"
