@@ -1,8 +1,7 @@
 """Text rendering for Telegram (HTML parse mode).
 
 All provider text is untrusted: it is HTML-escaped and length-limited here,
-and it is never sent to a language model. Every card states where its data
-came from and how old it is.
+and every card states where its data came from and how old it is.
 """
 
 from __future__ import annotations
@@ -62,7 +61,7 @@ def intent_summary(intent: SearchIntent, lang: str, clock: str = "24h") -> str:
         parts.append(", ".join(cats[:3]))
     if intent.domain.is_transport:
         if intent.origin and intent.destination:
-            parts.append(f"{esc(_place_name(intent.origin))} -> {esc(_place_name(intent.destination))}")
+            parts.append(f"{esc(_place_name(intent.origin))} → {esc(_place_name(intent.destination))}")
     elif (loc := intent.location or intent.destination) is not None:
         parts.append(esc(_place_name(loc)))
     if intent.stay:
@@ -126,7 +125,7 @@ def price_text(r: Ranked, lang: str) -> str | None:
 def _times(r: Result, lang: str, clock: str) -> str:
     if not (r.starts_at and r.ends_at):
         return ""
-    s = f"{i18n.ftime(r.starts_at, lang, clock)} -> {i18n.ftime(r.ends_at, lang, clock)}"
+    s = f"{i18n.ftime(r.starts_at, lang, clock)} → {i18n.ftime(r.ends_at, lang, clock)}"
     if r.ends_at.date() != r.starts_at.date():
         s += " (+1)"
     return s + f" ({_duration(r.duration_min, lang)})"

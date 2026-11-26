@@ -16,7 +16,7 @@ published, prices from last year. For decisions that cost money that is worse th
 
 RADAR is a Telegram-native concierge that:
 
-1. understands a request in plain language (nine UI languages, mixed-language input),
+1. takes the request through buttons (category, place, date, time, guests, filters) or plain text in nine languages,
 2. turns it into a structured, validated search with hard requirements kept apart from wishes,
 3. queries the real providers that cover that place and category,
 4. shows ranked results with the source and age of every fact, and says plainly what it could not verify,
@@ -24,7 +24,7 @@ RADAR is a Telegram-native concierge that:
 6. keeps watching ("radars") and alerts on material changes,
 7. assembles multi-part plans from real places and checks they actually fit together.
 
-Everything is also reachable without typing, through buttons and the Mini App.
+Everything is reachable without typing: a single self-updating button panel in the chat and a full Mini App.
 
 ## 3. Users and first markets
 
@@ -38,7 +38,7 @@ No country is hard-coded. Any city resolves through geocoding; coverage gaps are
 
 | Principle | How the product enforces it |
 |---|---|
-| Facts come from providers, never from a model | LLMs only produce a `SearchIntent`. They never see or produce inventory, prices, hours or availability. |
+| Facts come from providers only | Inputs are buttons or a deterministic parser; every fact shown comes from a provider. |
 | Unknown stays unknown | Attributes are tri-state (yes / no / unknown). An unknown requirement can never make a result an exact match. |
 | Opening hours are not availability | Directory results always show "availability not checked" and a note that hours are not table availability. |
 | Cached fares are not offers | Freshness classes: live, recent, cached estimate, timetable, directory, fixture. Estimates are labelled in results and alerts. |

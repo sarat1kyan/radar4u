@@ -137,7 +137,7 @@
   "radar.schedule.every": "ogni {hours} ore",
   "radar.schedule.daily": "una volta al giorno",
   "radar.alert.title": "Radar: {name}",
-  "radar.alert.price_drop": "Prezzo sceso: {old} -> {new}",
+  "radar.alert.price_drop": "Prezzo sceso: {old} → {new}",
   "radar.alert.now_available": "Ora disponibile: {title}",
   "radar.alert.new_result": "Novità: {title}",
   "radar.alert.why": "Perché corrisponde: {reasons}",

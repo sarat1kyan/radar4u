@@ -448,5 +448,3 @@ async def on_builder_location(message: Message, state: FSMContext, user: User, p
     await message.answer("OK", reply_markup=ReplyKeyboardRemove())
     await show(message, state, user, edit=False)
     return True
-
-

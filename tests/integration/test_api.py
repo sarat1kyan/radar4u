@@ -100,3 +100,28 @@ async def test_clarification_and_public_endpoints(client):
 
 async def test_webhook_rejects_without_secret(client):
     assert (await client.post("/telegram/webhook", json={})).status_code == 403
+
+
+async def test_catalog_and_structured_draft_search(client):
+    h = {"Authorization": "tma " + init_data()}
+    cat = (await client.get("/api/v1/catalog", headers=h)).json()
+    stay = next(d for d in cat["domains"] if d["id"] == "stay")
+    assert stay["steps"][0] == "cat" and any(f["id"] == "wifi" for f in stay["filters"])
+    berlin = (await client.get("/api/v1/places", params={"q": "Berlin"}, headers=h)).json()[0]
+    assert berlin["timezone"] == "Europe/Berlin"
+    body = {
+        "draft": {
+            "domain": "stay",
+            "cat": "property.hotel",
+            "city": berlin,
+            "day": "2026-12-21",
+            "nights": 2,
+            "pax": 2,
+            "flags": ["wifi", "not-a-flag"],
+            "sort": "cheapest",
+        }
+    }
+    r = (await client.post("/api/v1/search", headers=h, json=body)).json()
+    assert r["counts"]["exact"] >= 1 and r["items"][0]["price"]
+    bad = await client.post("/api/v1/search", headers=h, json={"draft": {"domain": "nope"}})
+    assert bad.status_code == 422

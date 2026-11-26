@@ -137,7 +137,7 @@
   "radar.schedule.every": "ամեն {hours} ժամը մեկ",
   "radar.schedule.daily": "օրը մեկ անգամ",
   "radar.alert.title": "Ռադար: {name}",
-  "radar.alert.price_drop": "Գինն իջել է: {old} -> {new}",
+  "radar.alert.price_drop": "Գինն իջել է: {old} → {new}",
   "radar.alert.now_available": "Այժմ հասանելի է: {title}",
   "radar.alert.new_result": "Նոր: {title}",
   "radar.alert.why": "Ինչու է համապատասխանում: {reasons}",

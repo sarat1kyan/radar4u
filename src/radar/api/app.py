@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date
+from datetime import time as dtime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -25,10 +28,13 @@ from radar.bot import render
 from radar.core.errors import QuotaExceeded, ValidationFailed
 from radar.core.money import Money, MoneyError
 from radar.core.timeutil import aware
+from radar.domain.common import Domain, Place
 from radar.domain.intents import MonitorKind, MonitorSpec, SearchIntent
 from radar.monitoring.engine import RadarDraft
 from radar.nlu.interpreter import UserContext
+from radar.nlu.rules import _required_missing
 from radar.providers.base import SearchContext
+from radar.search.draft import CATEGORIES, FILTERS, GRID, SORTS, STEPS, build_intent
 from radar.search.metrics import METRICS
 from radar.storage import repo
 from radar.storage.models import Itinerary as ItineraryRow
@@ -39,7 +45,8 @@ WEBAPP_DIR = Path(__file__).resolve().parent.parent / "webapp"
 
 
 class SearchBody(BaseModel):
-    text: str = Field(..., min_length=1, max_length=2000)
+    text: str | None = Field(None, min_length=1, max_length=2000)
+    draft: dict[str, Any] | None = None
     refine: bool = True
 
 
@@ -58,6 +65,27 @@ class MePatch(BaseModel):
     language: str | None = Field(None, max_length=8)
     currency: str | None = Field(None, min_length=3, max_length=3)
     time_format: str | None = Field(None, pattern="^(24h|12h)$")
+
+
+def _clean_draft(d: dict[str, Any]) -> dict[str, Any]:
+    """Only known keys with sane types; places are re-validated as Place objects."""
+    out: dict[str, Any] = {"domain": Domain(str(d["domain"])).value}
+    for k in ("cat", "day", "time", "sort"):
+        if isinstance(d.get(k), str) and len(d[k]) <= 40:
+            out[k] = d[k]
+    for k in ("pax", "nights", "rooms"):
+        if isinstance(d.get(k), int) and 0 < d[k] <= 60:
+            out[k] = d[k]
+    if isinstance(d.get("flags"), list):
+        out["flags"] = [f for f in d["flags"] if isinstance(f, str)][:20]
+    for k in ("city", "origin", "dest"):
+        if isinstance(d.get(k), dict):
+            out[k] = Place.model_validate(d[k]).model_dump(mode="json")
+    if out.get("day"):
+        date.fromisoformat(out["day"])
+    if out.get("time"):
+        dtime.fromisoformat(out["time"])
+    return out
 
 
 def create_app(app_ctx: App | None = None) -> FastAPI:
@@ -109,7 +137,8 @@ def create_app(app_ctx: App | None = None) -> FastAPI:
         if request.url.path.startswith("/app"):
             resp.headers.setdefault(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; "
+                "default-src 'self'; script-src 'self' https://telegram.org https://unpkg.com; "
+                "style-src 'self' 'unsafe-inline' https://unpkg.com; "
                 "img-src 'self' data: https:; connect-src 'self'; frame-ancestors https://web.telegram.org "
                 "https://*.telegram.org",
             )
@@ -136,22 +165,7 @@ def create_app(app_ctx: App | None = None) -> FastAPI:
     @api.get("/api/v1/i18n/{lang}")
     async def ui_strings(lang: str) -> dict[str, str]:
         code = i18n.normalize_lang(lang)
-        prefixes = (
-            "menu.",
-            "search.",
-            "result.",
-            "radar.",
-            "sort.",
-            "domain.",
-            "settings.",
-            "common.",
-            "clarify.",
-            "constraint.",
-            "booking.handoff",
-            "error.",
-        )
-        merged = {**i18n.catalog("en"), **i18n.catalog(code)}
-        return {k: v for k, v in merged.items() if k.startswith(prefixes)}
+        return {**i18n.catalog("en"), **i18n.catalog(code)}
 
     @api.get("/api/v1/me")
     async def me(user: User = Depends(current_user)) -> dict[str, Any]:
@@ -182,13 +196,21 @@ def create_app(app_ctx: App | None = None) -> FastAPI:
         ctx = UserContext(
             language=user.language, currency=user.currency, timezone=user.timezone, home=repo.user_home(user)
         )
-        previous = None
-        if body.refine:
-            async with a.db.session() as s:
-                last = await repo.last_search(s, user)
-            previous = SearchIntent.model_validate(last.intent) if last else None
-        interp = await a.interpreter.interpret(body.text, ctx, previous)
-        intent = interp.intent
+        if body.draft is not None:
+            try:
+                intent = build_intent(_clean_draft(body.draft), user)
+            except (KeyError, ValueError) as exc:
+                raise HTTPException(422, "invalid draft") from exc
+            intent.missing = _required_missing(intent)
+        elif body.text:
+            previous = None
+            if body.refine:
+                async with a.db.session() as s:
+                    last = await repo.last_search(s, user)
+                previous = SearchIntent.model_validate(last.intent) if last else None
+            intent = (await a.interpreter.interpret(body.text, ctx, previous)).intent
+        else:
+            raise HTTPException(422, "text or draft required")
         if intent.missing:
             async with a.db.session() as s:
                 row = await repo.save_search(s, user, intent, [], {"pending": True})
@@ -217,6 +239,36 @@ def create_app(app_ctx: App | None = None) -> FastAPI:
         if outcome.no_coverage:
             view["coverage"] = render.coverage_text(outcome, user.language)
         return view
+
+    @api.get("/api/v1/catalog")
+    async def catalog(user: User = Depends(current_user)) -> dict[str, Any]:
+        lang = user.language
+        return {
+            "domains": [
+                {
+                    "id": d.value,
+                    "label": i18n.t(f"domain.{d.value}", lang),
+                    "steps": STEPS[d],
+                    "categories": [{"id": c, "label": i18n.t(f"cat.{c}", lang)} for c in CATEGORIES.get(d, [])],
+                    "filters": [{"id": f, "label": i18n.t(f"constraint.{f}", lang)} for f in FILTERS.get(d, [])],
+                    "sorts": [{"id": m.value, "label": i18n.t(f"sort.{m.value}", lang)} for m in SORTS[d.is_transport]],
+                }
+                for d in GRID
+            ],
+            "places": [p for p in [user.home_place, *(user.favorites or [])] if p][:6],
+        }
+
+    @api.get("/api/v1/places")
+    async def places(q: str, user: User = Depends(current_user), a: App = Depends(get_app)) -> list[dict[str, Any]]:
+        q = q.strip()[:80]
+        if len(q) < 2:
+            return []
+        if m := re.fullmatch(r"(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)", q):
+            place = await a.resolver.reverse(float(m.group(1)), float(m.group(2)), language=user.language)
+            return [place.model_dump(mode="json")]
+        ref = await a.resolver.resolve(q, language=user.language)
+        found = [ref.place, *ref.alternatives] if ref.place else []
+        return [p.model_dump(mode="json") for p in found if p is not None][:5]
 
     @api.get("/api/v1/radars")
     async def list_radars(user: User = Depends(current_user), a: App = Depends(get_app)) -> list[dict[str, Any]]:

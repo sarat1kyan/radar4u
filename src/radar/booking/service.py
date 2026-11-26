@@ -13,7 +13,6 @@ Rules enforced here, not in the UI:
   * a changed price always goes back to the user;
   * every booking carries an idempotency key so retries never double-book;
   * "submitted" is never reported as "confirmed".
-No language model is involved anywhere in this module.
 """
 
 from __future__ import annotations

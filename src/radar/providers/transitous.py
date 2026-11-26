@@ -184,7 +184,7 @@ def itinerary_to_result(it: dict[str, Any], domain_hint: Domain) -> Result | Non
     return Result(
         domain=domain,
         title=services,
-        subtitle=f"{first.origin.name} -> {last.destination.name}",
+        subtitle=f"{first.origin.name} → {last.destination.name}",
         point=first.origin.point,
         starts_at=first.origin.time,
         ends_at=last.destination.time,

@@ -1,17 +1,17 @@
-# 2. Rule parser first, LLM optional
+# 2. Deterministic language understanding, buttons first
 
-Status: accepted
+Status: accepted (revised)
 
 ## Context
-Most requests follow a handful of shapes. An LLM for every message adds latency, cost, a failure mode
-and an attack surface, and its output must be validated anyway.
+Requests must be understood the same way every time, offline, with no external service, no per-message
+cost and no way for listing text to influence the result.
 
 ## Decision
-A deterministic multilingual rule parser produces the `SearchIntent` by default. LLM backends
-(Anthropic SDK structured outputs, or any OpenAI-compatible server in JSON mode) are consulted only when
-the rule result is weak. Their output is a flat schema with enums, re-validated by deterministic code.
-The model never sees provider content and has no tools.
+- The primary interface is buttons: a single self-updating panel in the bot and a form in the Mini App
+  build a structured draft (category, place, date, time, guests, filters, sort).
+- Typed requests are optional and go through a deterministic multilingual rule parser. Anything it cannot
+  read is reported as missing and the bot offers buttons for it.
 
 ## Consequences
-RADAR works fully offline from model providers. Model outages degrade understanding of unusual phrasing,
-not availability. The vocabulary in `domain/vocabulary.py` is the single list both paths share.
+Behaviour is reproducible and testable (`tests/eval/parser_cases.json`). Unusual phrasing may need a tap
+instead of a sentence, which is the intended trade-off.

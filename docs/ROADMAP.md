@@ -3,14 +3,14 @@
 ## Now (done in this iteration)
 
 - Domain model, intent contract, constraint vocabulary, tri-state facts, freshness classes.
-- Rule parser for 9 languages, date parsing, refinement, optional LLM backends.
+- Button-first search panel, rule parser for 9 languages, date parsing, refinement.
 - Gazetteer for launch markets + Nominatim/Photon resolution.
 - Adapters: OSM venues, Transitous journeys, FX, weather, Duffel, Aviasales data, LiteAPI,
   Ticketmaster, partner feeds, demo fixtures.
 - Pipeline with partial results, dedupe, strict evaluation, ranking with reasons.
 - Radars with scheduling, backoff, dedupe, quiet hours, digests, quotas, expiry.
 - Booking state machine, itinerary planner.
-- Telegram bot, structured wizard, API, Mini App, 9 UI languages.
+- Telegram bot with rich-message UI, API, redesigned Mini App (map, photos, detail sheets), 9 UI languages.
 - Docker, compose, CI with PostgreSQL.
 
 ## Next (0.2)

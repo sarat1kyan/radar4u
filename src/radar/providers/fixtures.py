@@ -146,7 +146,7 @@ class FixtureProvider(Provider):
                 Result(
                     domain=Domain.FLIGHT,
                     title=f"{PREFIX}XX{100 + i}",
-                    subtitle=f"{oc} -> {dc}",
+                    subtitle=f"{oc} → {dc}",
                     starts_at=dep,
                     ends_at=arr,
                     legs=[

@@ -215,7 +215,7 @@ def element_to_result(el: dict[str, Any], intent: SearchIntent, lang: str, origi
     if tags.get("wikidata", "").startswith("Q"):
         facts["wikidata"] = tags["wikidata"]
     if tags.get("description"):
-        # Untrusted free text: stored for display only, never fed to language models.
+        # Untrusted free text: stored for display only.
         facts["description"] = tags["description"][:300]
     return Result(
         domain=intent.domain,

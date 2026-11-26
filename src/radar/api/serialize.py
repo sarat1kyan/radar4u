@@ -51,6 +51,17 @@ def ranked_view(r: Ranked, intent: SearchIntent, lang: str) -> dict[str, Any]:
         "unmet": labels(r.report.unmet, intent, lang),
         "reasons": [reason_text(k, p, intent, lang) for k, p in r.reasons if k.startswith("reason.")],
         "opening_hours": res.facts.get("opening_hours") if isinstance(res.facts.get("opening_hours"), str) else None,
+        "photo": res.facts.get("photo") if isinstance(res.facts.get("photo"), str) else None,
+        "stars": res.facts.get("stars") if isinstance(res.facts.get("stars"), int) else None,
+        "phone": next((lk.url[4:] for lk in res.links if lk.url.startswith("tel:")), None),
+        "unverified_keys": r.report.unverified,
+        "met_keys": r.report.met,
+        "unmet_keys": r.report.unmet,
+        "duration": i18n.t(
+            "result.duration", lang, hours=res.duration_min // 60, minutes=f"{res.duration_min % 60:02d}"
+        )
+        if res.duration_min is not None
+        else None,
         "provenance": {
             "provider": res.provenance.provider,
             "freshness": res.provenance.freshness.value,

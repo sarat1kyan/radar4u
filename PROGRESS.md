@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-26
+Last updated: 2026-11-26 (UI v2)
 
 ## Done and verified
 
@@ -18,6 +18,9 @@ Last updated: 2026-11-26
 | Radars: scheduling, baseline, alerts, dedupe, quiet hours, backoff, error state, expiry, quota | integration tests on SQLite and PostgreSQL 16 |
 | Booking: revalidation, nonce, expiry, price change, idempotency, ownership, hand-off | integration tests (demo provider) |
 | Itineraries: overlaps, tight connections, closed venues, weather, budget, replace-and-shift | unit tests |
+| Button-first search panel (category, place, calendar, time, guests, filters, sort) | end-to-end tests incl. the saved-city regression |
+| Rich-message UI (results, timetable tables, cards with map, photo, checklist; classic fallback) | e2e tests + sent live to Telegram and accepted (results, card, train table) |
+| Mini App v2 (tiles, builder, results map, detail sheets, radars, light/dark) | API tests + headless Chromium against the running API with live Transitous and OSM data |
 | Telegram bot flows | end-to-end tests through the real dispatcher with a fake Telegram session; live start against @radar4ubot (polling, commands registered in 9 languages) |
 | API + initData auth + Mini App | integration tests; Mini App rendered in headless Chromium against a running API |
 | Migrations | `alembic check` clean on SQLite and PostgreSQL |
@@ -25,6 +28,10 @@ Last updated: 2026-11-26
 | Static checks | ruff, mypy --strict clean |
 
 ## Known limitations
+
+- **Mini App hosting**: Telegram opens Mini Apps only from a public HTTPS URL. Deploy the API (Docker) behind
+  HTTPS and set `RADAR_WEBAPP_URL`; until then the bot works fully on its own.
+- **Photos** appear only for venues that have a Wikimedia Commons image tagged in OpenStreetMap.
 
 - **Restaurant and appointment availability**: no public reservation API exists for the target markets.
   RADAR shows verified venue data, opening hours (clearly not as availability) and hands off to the

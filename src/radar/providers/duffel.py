@@ -136,7 +136,7 @@ def offer_to_result(offer: dict[str, Any], live_mode: bool) -> Result | None:
     return Result(
         domain=Domain.FLIGHT,
         title=" / ".join(x.service or "?" for x in legs),
-        subtitle=f"{legs[0].origin.code} -> {legs[-1].destination.code}" + (f" ({owner})" if owner else ""),
+        subtitle=f"{legs[0].origin.code} → {legs[-1].destination.code}" + (f" ({owner})" if owner else ""),
         starts_at=legs[0].origin.time,
         ends_at=_local(
             first_slice.get("segments", [{}])[-1].get("arriving_at"),

@@ -57,7 +57,7 @@ def item_to_result(item: dict[str, Any], currency: str) -> Result | None:
     return Result(
         domain=Domain.FLIGHT,
         title=f"{airline or ''}{number or ''}".strip() or f"{origin}-{dest}",
-        subtitle=f"{origin} -> {dest}",
+        subtitle=f"{origin} → {dest}",
         starts_at=dep,
         legs=[
             Leg(

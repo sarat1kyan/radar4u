@@ -16,10 +16,8 @@ rather than opening a public issue.
 - **Authorization**: every radar, booking and stored search is looked up together with its owner;
   another user's id returns "not found".
 - **Untrusted content**: provider text (names, descriptions, reviews) is escaped before it reaches
-  Telegram, inserted with `textContent` in the Mini App, served under a strict CSP, and never passed to a
-  language model.
-- **Language models** have no tools, no network or database access through RADAR, and their output is
-  a fixed schema validated by deterministic code. They are not involved in booking.
+  Telegram, inserted as text nodes in the Mini App, and served under a strict CSP.
+- **Deterministic input**: requests are built from buttons or parsed by fixed rules.
 - **Bookings** require provider revalidation, a one-time nonce bound to the summary the user saw
   (10 minute TTL), and are idempotent. Traveller details typed in chat are deleted from the chat after
   being read and are sent only to the booking provider.

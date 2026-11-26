@@ -6,8 +6,8 @@
  Telegram chat ──► aiogram Dispatcher ──┐
  Mini App (WebView) ──► FastAPI ────────┤
                                         ▼
-                               Interpreter (nlu/)
-                     rules parser  ──►  optional LLM backend
+     button panel / Mini App form ──► draft ──┐
+                               Interpreter (nlu/): rule parser ──┤
                                         │  SearchIntent (validated)
                                         ▼
                         GeoResolver (gazetteer, Nominatim, Photon)
@@ -32,17 +32,17 @@ services from it.
 | Path | Responsibility |
 |---|---|
 | `core/` | `Money` (Decimal + ISO code, floats rejected), `Provenance` and `Freshness`, tri-state `Tri`, errors, time helpers |
-| `domain/` | `SearchIntent`, `Result`, the constraint vocabulary shared by parser, LLM schema, providers and filters |
+| `domain/` | `SearchIntent`, `Result`, the constraint vocabulary shared by parser, buttons, providers and filters |
 | `geo/` | Gazetteer of launch-market cities in every script, Nominatim/Photon resolution with caching and 1 rps, IANA zone lookup |
-| `nlu/` | Rule parser (9 languages), date parser, conversational refinement, LLM backends behind one contract |
+| `nlu/` | Rule parser (9 languages), date parser, conversational refinement |
 | `providers/` | One adapter per source, the shared HTTP client (token bucket, circuit breaker, jittered retries), registry |
-| `search/` | Pipeline, filters (met / unmet / unverified), ranking with reasons, dedupe, metrics |
+| `search/` | Pipeline, filters (met / unmet / unverified), ranking with reasons, dedupe, metrics, structured drafts |
 | `monitoring/` | Radar service (creation rules, quotas), engine (scheduling, diffing, backoff), notifier |
 | `booking/` | Booking state machine |
 | `itinerary/` | Plan builder, validator, replace-and-shift |
 | `storage/` | SQLAlchemy models, data access helpers; Alembic migrations in `/migrations` |
 | `i18n/` | JSON catalogs, ICU-style plurals with CLDR rules, Babel formatting |
-| `bot/` | aiogram handlers, keyboards, HTML rendering, worker loop |
+| `bot/` | aiogram handlers, search panel, rich-message rendering (with classic fallback), worker loop |
 | `api/` | FastAPI app, Telegram initData auth, JSON views |
 | `webapp/` | Mini App (plain HTML/CSS/JS, no build step) |
 
@@ -61,20 +61,23 @@ Everything downstream consumes `SearchIntent`:
 Times are wall-clock at the place being searched. "Tomorrow at 18:00 in Yerevan" is 18:00 Asia/Yerevan
 regardless of where the user or the server is.
 
-## Language understanding
+## Input: buttons first, text optional
 
-1. The rule parser always runs. It is deterministic, offline and covers the common shapes of requests in
-   en, ru, hy, ka, kk, de, fr, it, es, including inflected city names.
-2. If its confidence is low and an LLM backend is configured, the backend gets the user's text (and the
-   previous intent for follow-ups) and must return `LLMIntent`, a flat schema with enums. The SDK's
-   structured output validates it; then deterministic code converts it to `SearchIntent`, re-checking
-   every value against the vocabulary and domain.
-3. Any backend failure, refusal or invalid output falls back to the rule result.
-4. The model has no tools, no network access through us, and never sees provider content.
+1. **Search panel** (`bot/handlers/builder.py`, Mini App form): one message that edits itself through the
+   steps of the chosen domain (category, place, date with calendar, time, guests, nights, filter toggles,
+   sort). The result is a draft dict; `search/draft.py:build_intent` converts it to a `SearchIntent`. The
+   Mini App posts the same draft to `POST /api/v1/search`.
+2. **Typed requests** go through the rule parser (en, ru, hy, ka, kk, de, fr, it, es, including inflected
+   city names). Missing pieces come back as `missing` and the bot offers one-tap answers.
+3. Follow-ups ("cheaper", "actually Paris", "without wifi") refine the previous intent via
+   `nlu/refine.py`.
 
-Follow-ups go through `nlu/refine.py`, which parses the new message in the context of the previous domain
-and merges only what changed. Negations ("without wifi") drop constraints; "cheaper" lowers the budget by
-20% or switches to price sorting.
+## Telegram UI
+
+Results, detail cards and plans are sent as Bot API rich messages (headings, tables, checklists,
+embedded maps, photos, footers) with styled inline buttons (primary / success / danger, copy-to-clipboard).
+`bot/ui.py` builds each screen together with a classic HTML version and falls back automatically if a
+rich message is rejected.
 
 ## Search pipeline
 

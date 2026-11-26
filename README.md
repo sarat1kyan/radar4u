@@ -4,9 +4,8 @@ Find anything. Anywhere.
 
 RADAR is a Telegram bot and Mini App that searches real providers for restaurants, stays, flights,
 trains, buses and ferries, events, appointments, rentals and products, then keeps watching for you.
-You describe what you need in your own words (or tap through a few buttons); RADAR works out the
-requirements, asks only for what is missing, queries the sources that cover that place, and shows
-ranked results with where every fact came from.
+Tap through a few buttons (or just type what you need), and RADAR queries the sources that cover that
+place, ranks what it finds and shows where every fact came from.
 
 It is strict about facts:
 
@@ -14,13 +13,14 @@ It is strict about facts:
 - Missing information stays "not confirmed"; it never becomes a yes.
 - Opening hours are not shown as table availability, timetables not as tickets, cached fares not as
   offers, and a submitted booking is not called confirmed.
-- Language models (optional) only turn text into a search request. They never produce or see listings.
 
 ## What works today
 
 | Area | Source | State |
 |---|---|---|
 | Restaurants, cafes, bars, spas, salons, museums, theatres, venues | OpenStreetMap via Overpass | live, no key |
+| Hotels, hostels, guesthouses (directory, no prices) | OpenStreetMap via Overpass | live, no key |
+| Venue photos | Wikimedia Commons | live, no key |
 | Trains, coaches, buses, ferries (timetables) | Transitous | live, no key, non-commercial |
 | Geocoding any city, aliases in 9 languages | built-in gazetteer + Nominatim / Photon | live |
 | Currency conversion | ECB + open.er-api.com | live |
@@ -30,13 +30,24 @@ It is strict about facts:
 | Events with tickets | Ticketmaster Discovery | needs key |
 | Long-term rentals, shopping | partner feeds | needs a feed |
 
-See [docs/PROVIDERS.md](docs/PROVIDERS.md) for the full capability matrix, what each source does and does
+The four keys are free; [KEYS.md](KEYS.md) has the exact signup steps. See
+[docs/PROVIDERS.md](docs/PROVIDERS.md) for the full capability matrix, what each source does and does
 not provide, and which marketplaces need a commercial agreement first.
 
 UI languages: English, Russian, Armenian, Georgian, Kazakh, German, French, Italian, Spanish.
 Adding one is dropping a JSON file into `src/radar/i18n/locales/`.
 
-## Examples
+## How it looks
+
+In the chat, everything happens in one message that updates itself: pick a category, a city (saved
+cities, current location or any city), a day from the calendar, a time, guests and the filters you need,
+then Search. Results come back as rich cards with tables, an embedded map, photos, a checklist of your
+requirements and buttons for the website, route, phone and booking.
+
+The Mini App has the same flow as a full screen app: category tiles, date strip, chips, a results map,
+detail sheets and your radars. It follows the Telegram theme, light or dark.
+
+## Typing works too
 
 ```
 sushi restaurant for two in Yerevan tomorrow at 18:00, romantic, max 30,000 AMD
@@ -109,7 +120,6 @@ Everything is environment variables; see [.env.example](.env.example). The impor
 | `RADAR_REDIS_URL` | optional, keeps conversation state across restarts and instances |
 | `RADAR_WEBAPP_URL` | public HTTPS URL of the Mini App |
 | `RADAR_COMMERCIAL` | `true` if the deployment earns money; skips non-commercial free tiers |
-| `RADAR_NLU_BACKEND` | `rules` (default), `anthropic` or `openai` |
 | `DUFFEL_ACCESS_TOKEN`, `LITEAPI_KEY`, `TICKETMASTER_API_KEY`, `TRAVELPAYOUTS_TOKEN` | optional providers |
 | `RADAR_ENABLE_FIXTURES` | labelled demo data for domains without a live provider (never in prod) |
 
@@ -133,6 +143,7 @@ The parser has a regression dataset in `tests/eval/parser_cases.json`; add a cas
 - [Providers and onboarding](docs/PROVIDERS.md)
 - [Decisions (ADRs)](docs/adr)
 - [Roadmap](docs/ROADMAP.md)
+- [API keys](KEYS.md)
 - [Progress and known limitations](PROGRESS.md)
 - [Security](SECURITY.md)
 
