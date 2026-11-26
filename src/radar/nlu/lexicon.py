@@ -539,7 +539,7 @@ CONSTRAINT_CUES: list[tuple[str, str, object]] = [
     ),
     (r"\bchangeable\b|\bflexible ticket\b|\bflex\b", "changeable", None),
     (
-        r"\bfirst class\b|перв\w* класс\w*|\b1\.? klasse\b|\bpremière classe\b|\bprima classe\b|\bprimera clase\b",
+        r"\bfirst class\b|перв\w* класс\w*|\b1\.? klasse\b|\berste[rn]? klasse\b|\bpremière classe\b|\bprima classe\b|\bprimera clase\b",
         "first_class",
         None,
     ),

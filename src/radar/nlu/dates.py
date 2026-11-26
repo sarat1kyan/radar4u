@@ -218,7 +218,7 @@ def parse_dates(text: str, today: date) -> DateParse:
 
     # "21-27 December", "21 to 27 December", "с 21 по 27 декабря"
     rng = re.search(
-        rf"\b(\d{{1,2}})\s*(?:-|–|to|till|until|по|до|bis|au|al|a)\s*(\d{{1,2}})\s*(?:of\s+)?({_MONTH_ALT})\w*",
+        rf"\b(\d{{1,2}})\s*(?:-|\u2013|to|till|until|по|до|bis|au|al|a)\s*(\d{{1,2}})\s*(?:of\s+)?({_MONTH_ALT})\w*",
         low,
     )
     if rng:
@@ -233,7 +233,7 @@ def parse_dates(text: str, today: date) -> DateParse:
                 except ValueError:
                     pass
     # "December 21-27"
-    rng2 = re.search(rf"\b({_MONTH_ALT})\w*\.?\s+(\d{{1,2}})\s*(?:-|–|to|till|until)\s*(\d{{1,2}})\b", low)
+    rng2 = re.search(rf"\b({_MONTH_ALT})\w*\.?\s+(\d{{1,2}})\s*(?:-|\u2013|to|till|until)\s*(\d{{1,2}})\b", low)
     if rng2 and not rng:
         mo = _month_of(rng2.group(1))
         if mo:
