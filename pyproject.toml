@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radar4u"
+version = "0.1.0"
+description = "RADAR - discovery, search, booking and monitoring of real-world services over Telegram"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12,<3.15"
+authors = [{ name = "Mher Saratikyan" }]
+dependencies = [
+    "aiogram==3.34.0",
+    "fastapi==0.165.0",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.4",
+    "pydantic-settings==2.16.3",
+    "sqlalchemy[asyncio]==2.1.9",
+    "alembic==1.20.1",
+    "asyncpg==0.32.0",
+    "aiosqlite==0.22.1",
+    "httpx==0.29.0",
+    "redis==8.2.0",
+    "babel==2.19.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic==2.14.0"]
+dev = [
+    "pytest==9.2.0",
+    "pytest-asyncio==1.5.0",
+    "respx==0.23.1",
+    "ruff==0.17.6",
+    "mypy==2.4.1",
+    "anthropic==2.14.0",
+]
+
+[project.scripts]
+radar = "radar.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+radar = ["i18n/locales/*.json", "webapp/*", "geo/*.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "live: hits real public endpoints (deselect with -m 'not live')",
+]
+addopts = "-m 'not live'"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "RUF", "S", "DTZ"]
+ignore = ["S101", "RUF001", "RUF002", "RUF003", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "DTZ", "E501"]
+"src/radar/nlu/lexicon.py" = ["E501"]
+"src/radar/nlu/dates.py" = ["E501"]
+"src/radar/geo/gazetteer_data.py" = ["E501"]
+"src/radar/i18n/**" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+packages = ["radar"]
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["babel.*", "respx.*"]
+ignore_missing_imports = true
