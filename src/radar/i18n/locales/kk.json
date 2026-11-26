@@ -425,5 +425,7 @@
   "home.near_me_now": "Жақын маңда ашық",
   "search.share_location": "Ең жақын орындарды көру үшін орналасқан жеріңізбен бөлісіңіз.",
   "result.open_count": "{count, plural, one {# қазір ашық} other {# қазір ашық}}",
-  "table.status": "Қазір"
+  "table.status": "Қазір",
+  "search.stage.ask": "Іздеп жатырмын",
+  "search.stage.rank": "Ең жақсыларын іріктеп жатырмын"
 }

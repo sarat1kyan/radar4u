@@ -425,5 +425,7 @@
   "home.near_me_now": "Open near me",
   "search.share_location": "Share your location to see the nearest places.",
   "result.open_count": "{count, plural, one {# open right now} other {# open right now}}",
-  "table.status": "Now"
+  "table.status": "Now",
+  "search.stage.ask": "Searching",
+  "search.stage.rank": "Ranking the best matches"
 }

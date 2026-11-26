@@ -81,8 +81,13 @@ async def harness(settings, fixtures, monkeypatch):
         from aiogram.types import Location
 
         n["u"] += 1
-        msg = Message(message_id=n["u"], date=datetime.now(UTC), chat=CHAT, from_user=TG_USER,
-                      location=Location(latitude=lat, longitude=lon))
+        msg = Message(
+            message_id=n["u"],
+            date=datetime.now(UTC),
+            chat=CHAT,
+            from_user=TG_USER,
+            location=Location(latitude=lat, longitude=lon),
+        )
         await dp.feed_update(bot, Update(update_id=n["u"], message=msg))
 
     send_text.location = send_location

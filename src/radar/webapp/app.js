@@ -48,6 +48,38 @@
     clearTimeout(toast._t);
     toast._t = setTimeout(() => el.classList.add("hidden"), 2600);
   };
+  // Material-style ripple on every button.
+  document.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest("button, .btn");
+    if (!b || b.disabled) return;
+    const r = b.getBoundingClientRect();
+    const dot = document.createElement("span");
+    dot.className = "ripple";
+    dot.style.left = e.clientX - r.left + "px";
+    dot.style.top = e.clientY - r.top + "px";
+    b.appendChild(dot);
+    setTimeout(() => dot.remove(), 600);
+  }, { passive: true });
+
+  function stagger(container) {
+    container.classList.add("stagger");
+    [...container.children].forEach((c, i) => c.style.setProperty("--i", Math.min(i, 14)));
+  }
+
+  function radarEl() {
+    return h("div", { class: "radar" }, h("span", { class: "blip b1" }), h("span", { class: "blip b2" }), h("span", { class: "blip b3" }));
+  }
+
+  function countUp(el, to) {
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / 600);
+      el.textContent = String(Math.round(to * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", Authorization: "tma " + initData } });
     if (res.status === 204) return null;
@@ -74,6 +106,12 @@
     event: "#ff4d97,#ff8a3d", wellness: "#22c1a1,#5ad17a", ground: "#ffb020,#ff7a45", realestate: "#5b6cff,#8f5cff",
     plan: "#0bb3c4,#3a8bff", shopping: "#ff8a3d,#ffb020",
   };
+  const svgIcon = (inner) => {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("viewBox", "0 0 24 24");
+    s.innerHTML = inner; // static, trusted markup
+    return s;
+  };
   const icon = (d) => {
     const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     s.setAttribute("viewBox", "0 0 24 24");
@@ -85,7 +123,15 @@
   function show(view, push = true) {
     const cur = document.querySelector(".view:not(.hidden)");
     if (push && cur && cur.id !== "v-" + view) stack.push(cur.id.slice(2));
-    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hidden", v.id !== "v-" + view));
+    document.querySelectorAll(".view").forEach((v) => {
+      const on = v.id === "v-" + view;
+      v.classList.toggle("hidden", !on);
+      if (on) {
+        v.classList.remove("push", "pop");
+        void v.offsetWidth; // restart the entrance animation
+        v.classList.add(push ? "push" : "pop");
+      }
+    });
     document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === view));
     window.scrollTo({ top: 0 });
     if (tg) {
@@ -119,7 +165,10 @@
     const home = ME.home;
     const pill = $("#city-pill");
     pill.replaceChildren(h("span", null, home ? home.name : t("sb.where")));
-    $("#t-tagline").textContent = t("home.tagline");
+    const tag = t("home.tagline");
+    const words = tag.split(" ");
+    const last = words.pop();
+    $("#t-tagline").replaceChildren(words.join(" ") + " ", h("span", { class: "grad" }, last || ""));
     $("#t-categories").textContent = t("search.pick_domain");
     $("#q").placeholder = t("home.hint");
     const tiles = $("#tiles");
@@ -129,14 +178,16 @@
     for (const d of CAT.domains) {
       const [a, b] = (GRAD[d.id] || GRAD.plan).split(",");
       tiles.appendChild(h("button", { class: "tile", onclick: () => { haptic(); startBuilder(d.id); } },
-        h("span", { class: "ic", style: `background:linear-gradient(135deg,${a},${b})` }, icon(d.id)),
+        h("span", { class: "ic", style: `background:linear-gradient(135deg,${a},${b});--c1:${a}` }, icon(d.id)),
         h("b", null, d.label)));
     }
+    stagger(tiles);
   }
 
   // ---------- builder ----------
   const domain = () => CAT.domains.find((d) => d.id === draft.domain);
   function startBuilder(dom) {
+    renderBuilder._sameDomain = null;
     const d = CAT.domains.find((x) => x.id === dom);
     draft = { domain: dom, flags: [], sort: "best", pax: 2 };
     if (!d.categories.length) draft.cat = "any";
@@ -226,9 +277,10 @@
 
   function stepper(label, key, min, max, fmt) {
     const val = draft[key] || min;
+    setTimeout(() => { stepper._last = key + val; }, 0);
     return block(label, h("div", { class: "stepper" },
       h("button", { type: "button", onclick: () => { haptic(); draft[key] = Math.max(min, val - 1); renderBuilder(); } }, "-"),
-      h("b", null, fmt ? fmt(val) : String(val)),
+      h("b", { class: stepper._last === key + val ? "" : "bump" }, fmt ? fmt(val) : String(val)),
       h("button", { type: "button", onclick: () => { haptic(); draft[key] = Math.min(max, val + 1); renderBuilder(); } }, "+")));
   }
 
@@ -268,6 +320,10 @@
         box.appendChild(block(t("search.sort"), s));
       }
     }
+    if (!renderBuilder._sameDomain || renderBuilder._sameDomain !== draft.domain) stagger(box);
+    renderBuilder._sameDomain = draft.domain;
+    const [ga] = (GRAD[draft.domain] || GRAD.plan).split(",");
+    $("#v-builder .page-head").style.setProperty("--head-c", ga);
     const ready = (!d.steps.includes("city") || draft.city) && (!d.steps.includes("origin") || draft.origin)
       && (!d.steps.includes("dest") || draft.dest);
     if (tg) {
@@ -288,20 +344,33 @@
   }
   async function doSearch(body) {
     show("results");
-    $("#r-list").replaceChildren(...[0, 1, 2, 3].map(() => h("div", { class: "sk" })));
+    const ticker = h("div", { class: "ticker" }, h("span", null, t("search.stage.ask") + "..."));
+    const skeleton = () => h("div", { class: "sk" }, h("i", { class: "a" }), h("div", { class: "b" }, h("i"), h("i"), h("i")));
+    const list = $("#r-list");
+    list.replaceChildren(h("div", { class: "loading" }, radarEl(), ticker), skeleton(), skeleton(), skeleton());
+    stagger(list);
+    const stages = [t("search.stage.ask") + "...", "OpenStreetMap", "Transitous", t("search.stage.rank") + "..."];
+    let si = 0;
+    clearInterval(doSearch._tick);
+    doSearch._tick = setInterval(() => {
+      si = (si + 1) % stages.length;
+      ticker.replaceChildren(h("span", null, stages[si]));
+    }, 1100);
     $("#r-note").textContent = "";
     $("#r-title").textContent = "";
-    $("#r-eyebrow").textContent = t("search.progress", { sources: "..." });
+    $("#r-eyebrow").textContent = t("search.stage.ask");
     $("#r-chips").replaceChildren();
     $("#r-sort").replaceChildren();
     $("#map").classList.add("hidden");
     if (tg) { tg.MainButton.hide(); tg.MainButton.showProgress && tg.MainButton.showProgress(); }
     try {
       last = await api("/api/v1/search", { method: "POST", body: JSON.stringify(body) });
+      clearInterval(doSearch._tick);
       renderResults();
       if (tg) tg.HapticFeedback.notificationOccurred("success");
     } catch (e) {
-      $("#r-list").replaceChildren(h("div", { class: "empty" }, t("error.generic")));
+      clearInterval(doSearch._tick);
+      $("#r-list").replaceChildren(emptyState(t("error.generic")));
       if (tg) tg.HapticFeedback.notificationOccurred("error");
     } finally {
       if (tg && tg.MainButton.hideProgress) tg.MainButton.hideProgress();
@@ -323,11 +392,11 @@
     const list = $("#r-list");
     list.replaceChildren();
     if (r.missing && r.missing.length) {
-      list.appendChild(h("div", { class: "empty" }, r.question || ""));
+      list.appendChild(emptyState(r.question || ""));
       return;
     }
-    if (r.coverage) { list.appendChild(h("div", { class: "empty" }, r.coverage.replace(/<[^>]+>/g, ""))); return; }
-    if (!r.items.length) { list.appendChild(h("div", { class: "empty" }, t("search.no_results"))); return; }
+    if (r.coverage) { list.appendChild(emptyState(r.coverage.replace(/<[^>]+>/g, ""))); return; }
+    if (!r.items.length) { list.appendChild(emptyState(t("search.no_results"))); return; }
 
     const transport = ["rail", "ground", "flight"].includes(r.domain);
     const sortRow = $("#r-sort");
@@ -340,16 +409,27 @@
     r.items.forEach((it, i) => {
       if (it.tier !== tier) {
         tier = it.tier;
-        list.appendChild(h("div", { class: "group" }, (r.headers || {})[tier] || tier));
+        const n = r.items.filter((x) => x.tier === tier).length;
+        const label = ((r.headers || {})[tier] || tier).replace(/^\d+\s*/, "");
+        const cnt = h("span", { class: "count" }, "0");
+        list.appendChild(h("div", { class: "group" }, cnt, label));
+        countUp(cnt, n);
       }
       list.appendChild(transport ? tripCard(it, i) : placeCard(it, i));
     });
+    stagger(list);
+    const [hc] = (GRAD[r.domain] || GRAD.plan).split(",");
+    $("#v-results .page-head").style.setProperty("--head-c", hc);
     const notes = [];
     if (Object.keys(r.provider_errors || {}).length) notes.push(t("search.partial", { providers: Object.keys(r.provider_errors).join(", ") }));
     if (r.items.some((x) => x.unverified)) notes.push(t("result.unverified_note"));
     $("#r-note").textContent = notes.join("\n");
     drawMap(r.items.filter((x) => x.point && !transport));
     mainWatch();
+  }
+
+  function emptyState(text) {
+    return h("div", { class: "empty" }, radarEl(), h("div", null, text));
   }
 
   function priceEl(it) {
@@ -365,16 +445,28 @@
     if (it.unverified) out.push(h("span", { class: "tag warn" }, t("result.unconfirmed_short", { items: it.unverified })));
     if (it.tier === "alternative" && it.unmet) out.push(h("span", { class: "tag bad" }, it.unmet));
     if (it.stars) out.push(h("span", { class: "tag" }, tp("result.stars", it.stars)));
+    (it.features || []).slice(0, 3).forEach((f) => out.push(h("span", { class: "tag feat" }, f)));
     return out;
   }
   function placeCard(it, i) {
-    const ph = h("div", { class: "ph", style: it.photo ? `background-image:url("${encodeURI(it.photo)}")` : "" },
-      it.photo ? null : icon(it.domain));
+    const [g1, g2] = (GRAD[it.domain] || GRAD.plan).split(",");
+    const ph = h("div", { class: "ph icon", style: `--ph-grad:linear-gradient(135deg,${g1},${g2})` }, icon(it.domain));
+    if (it.photo) {
+      const img = h("img", { src: it.photo, alt: "", loading: "lazy", referrerpolicy: "no-referrer" });
+      img.onload = () => { img.classList.add("ok"); ph.classList.remove("icon"); ph.querySelector("svg")?.remove(); };
+      img.onerror = () => img.remove();
+      ph.appendChild(img);
+      img.style.position = "absolute";
+      img.style.inset = "0";
+    }
     const sub = [it.subtitle, it.distance].filter(Boolean).join(" | ");
+    const contact = h("div", { class: "contact" });
+    if (it.has_website) contact.appendChild(svgIcon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'));
+    if (it.has_phone) contact.appendChild(svgIcon('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>'));
     const rating = it.rating ? h("span", { class: "tag" }, `${it.rating.value}/${it.rating.scale}`) : null;
     return h("div", { class: "card", onclick: () => openDetail(it, i) },
       h("div", { class: "res" }, ph, h("div", { class: "bd" },
-        h("h3", null, h("span", { class: "n" }, String(i + 1)), it.title),
+        h("h3", null, h("span", { class: "n" }, String(i + 1)), it.title, contact),
         h("div", { class: "sub" }, sub),
         h("div", { class: "row1" }, h("div", { class: "tags" }, ...tags(it), rating), priceEl(it)))));
   }
@@ -387,7 +479,7 @@
   }
   function tripCard(it, i) {
     const changes = it.transfers === 0 ? t("result.direct") : tp("result.transfers", it.transfers || 0);
-    return h("div", { class: "card", onclick: () => openDetail(it, i) }, h("div", { class: "trip" },
+    return h("div", { class: "card", style: `--i:${Math.min(i, 14)}`, onclick: () => openDetail(it, i) }, h("div", { class: "trip", style: `--i:${Math.min(i, 14)}` },
       h("div", { class: "times" }, h("span", { class: "t" }, localTime(it.starts_at)), h("div", { class: "line" }), h("span", { class: "t" }, localTime(it.ends_at))),
       h("div", { class: "mid" }, [it.duration, changes].filter(Boolean).join(" | ")),
       h("div", { class: "row1" }, h("div", { class: "sv" }, it.title), priceEl(it)),
@@ -407,7 +499,7 @@
     const g = L.featureGroup();
     items.slice(0, 30).forEach((it) => {
       const n = last.items.indexOf(it) + 1;
-      L.marker([it.point.lat, it.point.lon], { icon: L.divIcon({ className: "", html: `<div class="pin">${n}</div>`, iconSize: [26, 26] }) })
+      L.marker([it.point.lat, it.point.lon], { icon: L.divIcon({ className: "", html: `<div class="pin" style="animation-delay:${Math.min(n, 20) * 40}ms"><span>${n}</span></div>`, iconSize: [28, 28], iconAnchor: [14, 34] }) })
         .on("click", () => openDetail(it, n - 1)).addTo(g);
     });
     g.addTo(map);
@@ -420,7 +512,9 @@
     haptic();
     const body = $("#sheet-body");
     body.replaceChildren();
+    const [d1, d2] = (GRAD[it.domain] || GRAD.plan).split(",");
     if (it.photo) body.appendChild(h("div", { class: "hero-img", style: `background-image:url("${encodeURI(it.photo)}")` }));
+    else if (!it.legs.length) body.appendChild(h("div", { class: "hero-img icon", style: `--ph-grad:linear-gradient(135deg,${d1},${d2});height:120px` }, icon(it.domain)));
     body.appendChild(h("h2", null, it.title));
     body.appendChild(h("p", { class: "sub" }, [it.subtitle, it.address].filter(Boolean).join(" | ")));
     body.appendChild(h("div", { class: "tags", style: "margin:8px 18px" }, ...tags(it)));
@@ -460,7 +554,7 @@
         const m = L.map(mm, { zoomControl: false, dragging: false, scrollWheelZoom: false, attributionControl: false })
           .setView([it.point.lat, it.point.lon], 16);
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(m);
-        L.marker([it.point.lat, it.point.lon], { icon: L.divIcon({ className: "", html: '<div class="pin"></div>', iconSize: [26, 26] }) }).addTo(m);
+        L.marker([it.point.lat, it.point.lon], { icon: L.divIcon({ className: "", html: '<div class="pin"><span></span></div>', iconSize: [28, 28], iconAnchor: [14, 34] }) }).addTo(m);
       }, 60);
     }
 
@@ -483,6 +577,29 @@
     $("#sheet").scrollTop = 0;
     if (tg) tg.BackButton.show();
   }
+  (function sheetDrag() {
+    const sheet = document.getElementById("sheet");
+    let y0 = null;
+    let dy = 0;
+    sheet.addEventListener("touchstart", (e) => {
+      if (sheet.scrollTop > 0) return;
+      y0 = e.touches[0].clientY; dy = 0;
+      sheet.classList.add("dragging");
+    }, { passive: true });
+    sheet.addEventListener("touchmove", (e) => {
+      if (y0 == null) return;
+      dy = Math.max(0, e.touches[0].clientY - y0);
+      sheet.style.setProperty("--drag", dy + "px");
+    }, { passive: true });
+    sheet.addEventListener("touchend", () => {
+      if (y0 == null) return;
+      sheet.classList.remove("dragging");
+      sheet.style.removeProperty("--drag");
+      if (dy > 110) { haptic(); closeSheet(); }
+      y0 = null;
+    });
+  })();
+
   function closeSheet() {
     $("#sheet").classList.remove("open");
     $("#backdrop").classList.add("hidden");
@@ -512,11 +629,11 @@
 
   async function loadRadars() {
     const box = $("#radar-list");
-    box.replaceChildren(h("div", { class: "sk" }));
+    box.replaceChildren(h("div", { class: "loading" }, radarEl()));
     let list = [];
     try { list = await api("/api/v1/radars"); } catch (e) { box.replaceChildren(h("div", { class: "empty" }, e.message)); return; }
     box.replaceChildren();
-    if (!list.length) { box.appendChild(h("div", { class: "empty" }, t("radar.list_empty"))); return; }
+    if (!list.length) { box.appendChild(emptyState(t("radar.list_empty"))); return; }
     for (const r of list) {
       const active = r.state === "active" || r.state === "error";
       box.appendChild(h("div", { class: "card pad" },
@@ -527,6 +644,7 @@
             active ? t("radar.pause") : t("radar.resume")),
           h("button", { class: "btn", style: "background:var(--bad)", type: "button", onclick: async () => { haptic("medium"); await api(`/api/v1/radars/${r.id}`, { method: "DELETE" }); loadRadars(); } }, t("radar.delete")))));
     }
+    stagger(box);
   }
 
   // ---------- init ----------
@@ -552,7 +670,8 @@
     try {
       ME = await api("/api/v1/me");
     } catch (e) {
-      document.body.replaceChildren(h("div", { class: "empty" }, "Open RADAR from the Telegram bot."));
+      $("#splash").classList.add("out");
+      document.getElementById("app").replaceChildren(emptyState("Open RADAR from the Telegram bot."));
       return;
     }
     document.documentElement.lang = ME.language;
@@ -560,6 +679,7 @@
     CAT = await api("/api/v1/catalog");
     renderHome();
     show("home", false);
+    setTimeout(() => $("#splash").classList.add("out"), 350);
 
     const sel = $("#set-lang");
     for (const [code, name] of Object.entries(ME.languages || {})) sel.appendChild(h("option", { value: code, selected: code === ME.language }, name));

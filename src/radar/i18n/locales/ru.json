@@ -425,5 +425,7 @@
   "home.near_me_now": "Открыто рядом",
   "search.share_location": "Поделитесь геопозицией, чтобы увидеть ближайшие места.",
   "result.open_count": "{count, plural, one {# открыто сейчас} few {# открыто сейчас} many {# открыто сейчас} other {# открыто сейчас}}",
-  "table.status": "Сейчас"
+  "table.status": "Сейчас",
+  "search.stage.ask": "Ищу",
+  "search.stage.rank": "Подбираю лучшие варианты"
 }

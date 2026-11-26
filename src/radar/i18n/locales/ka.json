@@ -425,5 +425,7 @@
   "home.near_me_now": "ღიაა ახლოს",
   "search.share_location": "გააზიარეთ მდებარეობა, რომ ნახოთ უახლოესი ადგილები.",
   "result.open_count": "{count, plural, one {# ღიაა ახლა} other {# ღიაა ახლა}}",
-  "table.status": "ახლა"
+  "table.status": "ახლა",
+  "search.stage.ask": "ვეძებ",
+  "search.stage.rank": "ვარჩევ საუკეთესოებს"
 }

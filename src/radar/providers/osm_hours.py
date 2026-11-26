@@ -15,11 +15,10 @@ from datetime import datetime, timedelta
 from radar.core.provenance import Tri
 
 _DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-_SPAN = re.compile(r"^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\+?$")
-_UNSUPPORTED = re.compile(
-    r"\b(PH|SH|easter|sunrise|sunset|dawn|dusk|week|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|"
-    r"Nov|Dec)\b|\"|\[|\|\|"
-)
+_SPAN = re.compile(r"^(\d{1,2}):(\d{2})(?:-(\d{1,2}):(\d{2}))?(\+)?$")
+_MONTH = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+_UNSUPPORTED = re.compile(r"\b(easter|sunrise|sunset|dawn|dusk|week)\b|\"|\[|\|\|", re.IGNORECASE)
+OPEN_END = -1  # "18:00+": opens at 18:00, closing time not stated
 
 
 class HoursParseError(ValueError):
@@ -30,6 +29,8 @@ def _parse_days(spec: str) -> set[int]:
     days: set[int] = set()
     for part in spec.split(","):
         part = part.strip()
+        if part in ("PH", "SH", ""):
+            continue  # public/school holidays: we cannot know which days those are
         if "-" in part:
             a, b = part.split("-", 1)
             if a not in _DAYS or b not in _DAYS:
@@ -50,16 +51,34 @@ def _parse_spans(spec: str) -> list[tuple[int, int]]:
         m = _SPAN.match(part.strip())
         if not m:
             raise HoursParseError(part)
-        h1, m1, h2, m2 = (int(x) for x in m.groups())
-        start, end = h1 * 60 + m1, h2 * 60 + m2
+        h1, m1 = int(m.group(1)), int(m.group(2))
+        start = h1 * 60 + m1
+        if m.group(3) is None:
+            if not m.group(5):
+                raise HoursParseError(part)
+            spans.append((start, OPEN_END))
+            continue
+        end = int(m.group(3)) * 60 + int(m.group(4))
         if end <= start:
             end += 24 * 60  # crosses midnight
         spans.append((start, end))
     return spans
 
 
+def _rules(value: str) -> list[str]:
+    """Split into rules: ';' always, ',' only between a time and the next weekday spec."""
+    out: list[str] = []
+    for rule in value.split(";"):
+        out += re.split(r"(?<=[\d+])\s*,\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su|PH|SH)\b)", rule.strip())
+    return [r.strip() for r in out if r.strip()]
+
+
 def parse(value: str) -> dict[int, list[tuple[int, int]]]:
-    """weekday -> [(start_minute, end_minute)], end may exceed 1440."""
+    """weekday -> [(start_minute, end_minute)]; end may exceed 1440 or be OPEN_END.
+
+    Date-specific exceptions ("Dec 25 off", "Sep 01-15 off") are ignored: they change a handful
+    of days a year and would otherwise make the whole schedule unreadable.
+    """
     v = value.strip()
     if not v:
         raise HoursParseError("empty")
@@ -68,14 +87,19 @@ def parse(value: str) -> dict[int, list[tuple[int, int]]]:
     if _UNSUPPORTED.search(v):
         raise HoursParseError("unsupported construct")
     table: dict[int, list[tuple[int, int]]] = {}
-    for rule in (r.strip() for r in v.split(";")):
-        if not rule:
+    for rule in _rules(v):
+        if re.match(_MONTH, rule) or re.match(r"^(PH|SH)\b(?!\s*,)", rule):
             continue
-        m = re.match(r"^((?:[A-Z][a-z](?:-[A-Z][a-z])?)(?:,(?:[A-Z][a-z](?:-[A-Z][a-z])?))*)\s*(.*)$", rule)
-        if m:
+        rule = re.sub(r"\s*,\s*", ",", rule)
+        m = re.match(
+            r"^((?:(?:[A-Z][a-z]|PH|SH)(?:-[A-Z][a-z])?)(?:,(?:(?:[A-Z][a-z]|PH|SH)(?:-[A-Z][a-z])?))*)\s+(.*)$", rule
+        )
+        if m and not re.match(r"^\d", rule):
             days, rest = _parse_days(m.group(1)), m.group(2).strip()
         else:
             days, rest = set(range(7)), rule
+        if not days:
+            continue
         if rest.lower() in ("off", "closed"):
             for d in days:
                 table[d] = []
@@ -83,6 +107,8 @@ def parse(value: str) -> dict[int, list[tuple[int, int]]]:
         spans = _parse_spans(rest)
         for d in days:
             table[d] = spans  # later rules override earlier ones
+    if not table:
+        raise HoursParseError("no usable rules")
     return table
 
 
@@ -95,10 +121,15 @@ def is_open(value: str | None, at: datetime) -> Tri:
         return Tri.UNKNOWN
     minute = at.hour * 60 + at.minute
     today, yesterday = at.weekday(), (at - timedelta(days=1)).weekday()
-    if any(s <= minute < e for s, e in table.get(today, [])):
-        return Tri.YES
+    for s, e in table.get(today, []):
+        if e == OPEN_END and minute >= s:
+            return Tri.YES
+        if s <= minute < e:
+            return Tri.YES
     if any(e > 1440 and minute < e - 1440 for _, e in table.get(yesterday, [])):
         return Tri.YES
+    if any(e == OPEN_END for _, e in table.get(yesterday, [])) and minute < 4 * 60:
+        return Tri.UNKNOWN  # open-ended from yesterday, may still be open after midnight
     if today not in table and yesterday not in table:
         return Tri.UNKNOWN
     return Tri.NO
@@ -129,7 +160,7 @@ def describe_day(value: str | None, day: int) -> str | None:
     def hm(m: int) -> str:
         return f"{m // 60:02d}:{m % 60:02d}"
 
-    return ", ".join(f"{hm(s)}-{hm(e if e <= 1440 else e - 1440)}" for s, e in spans)
+    return ", ".join(f"{hm(s)}+" if e == OPEN_END else f"{hm(s)}-{hm(e if e <= 1440 else e - 1440)}" for s, e in spans)
 
 
 def next_change(value: str | None, at: datetime, horizon_days: int = 7) -> tuple[Tri, datetime | None]:
@@ -150,7 +181,8 @@ def next_change(value: str | None, at: datetime, horizon_days: int = 7) -> tuple
         day = base + timedelta(days=d)
         for s, e in table.get(day.weekday(), []):
             points.append(day + timedelta(minutes=s))
-            points.append(day + timedelta(minutes=e))
+            if e != OPEN_END:
+                points.append(day + timedelta(minutes=e))
     for p in sorted(x for x in points if x > at):
         if is_open(value, p) is not now_state:
             return now_state, p

@@ -13,7 +13,7 @@ import html
 import logging
 from dataclasses import dataclass, field
 
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup, InputRichMessage, Message
 
 log = logging.getLogger(__name__)
@@ -161,3 +161,19 @@ async def edit(target: Message, rich: Rich, fallback: str, markup: InlineKeyboar
         if "not modified" in str(exc):
             return target
         return await send(target, rich, fallback, markup)
+
+
+async def draft(target: Message, chat_id: int, draft_id: int, rich: Rich) -> bool:
+    """Stream an animated draft preview (Bot API 10.1+, private chats). Returns False if unsupported."""
+    bot = target.bot
+    if bot is None:
+        return False
+    try:
+        return bool(
+            await bot.send_rich_message_draft(
+                chat_id=chat_id, draft_id=draft_id, rich_message=InputRichMessage(html=rich.html())
+            )
+        )
+    except (TelegramBadRequest, TelegramAPIError) as exc:
+        log.info("draft preview unavailable: %s", exc)
+        return False

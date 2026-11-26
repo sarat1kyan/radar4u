@@ -425,5 +425,7 @@
   "home.near_me_now": "Բաց է մոտակայքում",
   "search.share_location": "Կիսվեք ձեր տեղադրությամբ՝ մոտակա վայրերը տեսնելու համար։",
   "result.open_count": "{count, plural, one {# բաց է հիմա} other {# բաց է հիմա}}",
-  "table.status": "Հիմա"
+  "table.status": "Հիմա",
+  "search.stage.ask": "Փնտրում եմ",
+  "search.stage.rank": "Ընտրում եմ լավագույնները"
 }

@@ -425,5 +425,7 @@
   "home.near_me_now": "Ouvert près de moi",
   "search.share_location": "Partagez votre position pour voir les lieux les plus proches.",
   "result.open_count": "{count, plural, one {# ouvert maintenant} other {# ouverts maintenant}}",
-  "table.status": "Maintenant"
+  "table.status": "Maintenant",
+  "search.stage.ask": "Recherche en cours",
+  "search.stage.rank": "Classement des meilleurs résultats"
 }

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import time as _time
+import random
 from datetime import datetime, time, timedelta
 
 from aiogram import F, Router
@@ -141,25 +141,41 @@ async def execute(
         await run_plan(message, app, user, intent, edit_message=edit_message)
         return
     eligible = app.registry.eligible(intent)
-    names = ", ".join(p.display_name for p in eligible.providers) or "-"
-    wait = (
-        ui.Rich()
-        .h(render.intent_summary(intent, lang, user.time_format).split("\n")[0], 3)
-        .p("<i>" + i18n.t("search.progress", lang, sources=render.esc(names)) + "</i>")
-    )
+    sources = [p.display_name for p in eligible.providers]
+    names = ", ".join(sources) or "-"
+    title = render.intent_summary(intent, lang, user.time_format).split("\n")[0]
     wait_text = i18n.t("search.progress", lang, sources=names)
-    if edit_message is not None:
-        progress = await ui.edit(edit_message, wait, wait_text)
-    else:
-        progress = await ui.send(message, wait, wait_text)
-    last_edit = [0.0]
+    chat_id = message.chat.id
+    draft_id = random.randint(1, 2**31 - 1)  # noqa: S311 - only identifies an animated preview
+    done_names: list[str] = []
+
+    def live(stage_key: str) -> ui.Rich:
+        """Animated preview: sources tick off as they answer, a shimmering placeholder below."""
+        r = ui.Rich().h(title, 3)
+        items = "".join(
+            f'<li><input type="checkbox"{" checked" if n in done_names else ""}>{render.esc(n)}</li>' for n in sources
+        )
+        if items:
+            r.parts.append(f"<ul>{items}</ul>")
+        r.parts.append(f"<tg-thinking>{i18n.t(stage_key, lang)}</tg-thinking>")
+        return r
+
+    # Private chats get Telegram's animated draft preview; anything else uses an editable message.
+    streaming = message.chat.type == "private" and await ui.draft(message, chat_id, draft_id, live("search.stage.ask"))
+    progress: Message | None = None
+    if not streaming:
+        wait = ui.Rich().h(title, 3).p("<i>" + render.esc(wait_text) + "</i>")
+        progress = await (
+            ui.edit(edit_message, wait, wait_text) if edit_message is not None else ui.send(message, wait, wait_text)
+        )
+    display = {p.name: p.display_name for p in eligible.providers}
 
     async def on_progress(name: str, done: int, total: int) -> None:
-        if done >= total or _time.monotonic() - last_edit[0] < 1.5:
-            return
-        last_edit[0] = _time.monotonic()
-        with contextlib.suppress(TelegramBadRequest):
-            await ui.edit(progress, wait.__class__(parts=[*wait.parts, f"<p>{done}/{total}</p>"]), wait_text)
+        if display.get(name) and display[name] not in done_names:
+            done_names.append(display[name])
+        if streaming:
+            stage = "search.stage.rank" if done >= total else "search.stage.ask"
+            await ui.draft(message, chat_id, draft_id, live(stage))
 
     outcome = await app.pipeline.run(intent, search_ctx(user), on_progress=on_progress)
     async with app.db.session() as s:
@@ -178,7 +194,14 @@ async def execute(
         await repo.audit(
             s, user.id, "search", domain=intent.domain.value, results=len(outcome.ranked), ms=int(outcome.total_ms)
         )
-    await show_page(progress, user, row.id, outcome, 0, edit=True)
+    if streaming:
+        if edit_message is not None:
+            with contextlib.suppress(TelegramBadRequest):
+                await edit_message.delete()
+        await show_page(message, user, row.id, outcome, 0, edit=False)
+    else:
+        assert progress is not None
+        await show_page(progress, user, row.id, outcome, 0, edit=True)
 
 
 async def show_page(msg: Message, user: User, sid: int, outcome: SearchOutcome, page: int, *, edit: bool) -> None:

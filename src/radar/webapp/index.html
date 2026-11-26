@@ -11,15 +11,22 @@
   <link rel="stylesheet" href="/app/static/styles.css">
 </head>
 <body>
+  <div class="splash" id="splash">
+    <div>
+      <div class="radar"><span class="blip b1"></span><span class="blip b2"></span><span class="blip b3"></span></div>
+      <div class="word">RADAR</div>
+    </div>
+  </div>
   <div id="app">
     <!-- HOME -->
     <section class="view" id="v-home">
       <header class="hero">
+        <span class="blob a"></span><span class="blob b"></span><span class="blob c"></span>
         <div class="hero-top">
           <div class="logo"><span class="pulse"></span>RADAR</div>
           <button class="pill" id="city-pill" type="button"></button>
         </div>
-        <h1 id="t-tagline">Find anything. Anywhere.</h1>
+        <h1 id="t-tagline"></h1>
         <form id="quick" class="quick" autocomplete="off">
           <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="q" maxlength="300" enterkeyhint="search" placeholder="sushi for two tomorrow 19:00">
@@ -74,7 +81,7 @@
   </nav>
 
   <div class="sheet-backdrop hidden" id="backdrop"></div>
-  <aside class="sheet" id="sheet" aria-hidden="true"><div class="grab"></div><div id="sheet-body"></div></aside>
+  <aside class="sheet" id="sheet" aria-hidden="true"><div class="grab"></div><div id="sheet-body" class="sheet-body"></div></aside>
 
   <div class="toast hidden" id="toast"></div>
   <script src="/app/static/app.js"></script>

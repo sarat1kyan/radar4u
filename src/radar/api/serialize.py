@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from radar import i18n
-from radar.bot.render import intent_summary, labels, reason_text
+from radar.bot.render import constraint_label, intent_summary, labels, reason_text
 from radar.domain.intents import SearchIntent
 from radar.search.draft import draft_from_intent
 from radar.search.pipeline import SearchOutcome
@@ -39,8 +39,16 @@ def ranked_view(r: Ranked, intent: SearchIntent, lang: str) -> dict[str, Any]:
             if change
             else i18n.t("status.closed", lang),
         }
+    features = [
+        constraint_label(k, lang)
+        for k, v in res.attributes.items()
+        if v.value == "yes" and k not in ("direct", "deal.rent", "deal.sale", "condition.new")
+    ][:4]
     return {
         "status": status,
+        "features": features,
+        "has_website": any(lk.kind.value in ("website", "booking") for lk in res.links),
+        "has_phone": any(lk.kind.value == "phone" for lk in res.links),
         "id": res.id,
         "tier": r.tier.name.lower(),
         "domain": res.domain.value,
