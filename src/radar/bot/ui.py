@@ -14,11 +14,44 @@ import logging
 from dataclasses import dataclass, field
 
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup, InputRichMessage, Message
+from aiogram.types import (
+    CopyTextButton,
+    DisabledButton,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputRichMessage,
+    Message,
+)
 
 log = logging.getLogger(__name__)
 
 STYLES = ("primary", "success", "danger")
+
+# One glyph per domain, used on buttons and headings.
+ICONS: dict[str, str] = {
+    "dining": "🍽",
+    "stay": "🏨",
+    "flight": "✈",
+    "rail": "🚆",
+    "ground": "🚌",
+    "event": "🎟",
+    "wellness": "💆",
+    "essentials": "🧰",
+    "realestate": "🏠",
+    "plan": "🗺",
+    "shopping": "🛍",
+}
+
+
+def icon(domain: object) -> str:
+    return ICONS.get(str(getattr(domain, "value", domain)), "")
+
+
+def progress(done: int, total: int) -> str:
+    """A small bar for multi-step screens: ●●●○○"""
+    total = max(total, 1)
+    done = max(0, min(done, total))
+    return "●" * done + "○" * (total - done)
 
 
 def esc(s: object, limit: int = 200) -> str:
@@ -120,13 +153,18 @@ class Rich:
 
 
 def kb(rows: list[list[tuple[str, str, str | None]]]) -> InlineKeyboardMarkup:
-    """rows of (label, callback_or_url, style). Values starting with https:// become URL buttons."""
+    """rows of (label, callback_or_url, style). Values starting with https:// become URL buttons.
+
+    style "disabled" renders a greyed, non-clickable button (page indicators, impossible moves).
+    """
     out: list[list[InlineKeyboardButton]] = []
     for row in rows:
         r = []
         for label, value, style in row:
             st = style if style in STYLES else None
-            if value.startswith("https://"):
+            if style == "disabled":
+                r.append(InlineKeyboardButton(text=label, disabled=DisabledButton()))
+            elif value.startswith("https://"):
                 r.append(InlineKeyboardButton(text=label, url=value, style=st))
             elif value.startswith("copy:"):
                 r.append(InlineKeyboardButton(text=label, copy_text=CopyTextButton(text=value[5:][:256]), style=st))

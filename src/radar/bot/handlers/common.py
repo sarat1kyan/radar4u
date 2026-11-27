@@ -95,7 +95,7 @@ async def on_onboarding_city(message: Message, app: App, user: User, state: FSMC
 
 @router.message(Onboarding.city, F.location)
 async def on_onboarding_location(message: Message, app: App, user: User, state: FSMContext) -> None:
-    await on_location(message, app, user, state)
+    await on_location(message, app, user, state, dashboard=False)
     await _finish_onboarding(message, app, user, state)
 
 
@@ -135,7 +135,7 @@ async def on_location_cmd(message: Message, user: User) -> None:
 
 
 @router.message(F.location)
-async def on_location(message: Message, app: App, user: User, state: FSMContext) -> None:
+async def on_location(message: Message, app: App, user: User, state: FSMContext, dashboard: bool = True) -> None:
     loc = message.location
     if loc is None:
         return
@@ -146,7 +146,11 @@ async def on_location(message: Message, app: App, user: User, state: FSMContext)
 
     if await on_builder_location(message, app, state, user, place):
         return
+    from radar.bot.handlers.travel import on_travel_location
+
     await message.answer(i18n.t("location.saved", user.language), reply_markup=ReplyKeyboardRemove())
+    if dashboard:
+        await on_travel_location(message, app, user, state, place)
 
 
 @router.message(Command("settings"))
@@ -261,3 +265,9 @@ async def on_settings_city(message: Message, app: App, user: User, state: FSMCon
         + " "
         + i18n.t("settings.city", user.language, city=render.esc(place.name))
     )
+
+
+@router.callback_query(F.data == "noop")
+async def on_noop(cb: CallbackQuery) -> None:
+    """Page indicators and other display-only buttons."""
+    await cb.answer()

@@ -17,7 +17,7 @@ from typing import Any
 
 from radar.core.money import ConvertedMoney
 from radar.core.provenance import Freshness, Tri
-from radar.domain.common import Domain, SortMode
+from radar.domain.common import SortMode
 from radar.domain.intents import SearchIntent
 from radar.domain.results import Availability, Result
 from radar.search.filters import MatchReport, Tier
@@ -152,7 +152,7 @@ def rank(items: list[Ranked], intent: SearchIntent, sort: SortMode | None = None
     s_lo, s_hi = (min(starts), max(starts)) if starts else (0.0, 0.0)
     target = _ts(intent.when.start) if intent.when and intent.when.start else None
     at = reference_time(intent)
-    venue = intent.domain in (Domain.DINING, Domain.WELLNESS, Domain.EVENT, Domain.SHOPPING)
+    venue = intent.domain.is_venue
 
     for it in items:
         r, rep = it.result, it.report

@@ -125,15 +125,19 @@ def panel(d: dict[str, Any], user: User, current: dict[str, Any] | None) -> tupl
     lang, clock = user.language, user.time_format
     dom = Domain(d["domain"])
     step = d.get("step") or next_step(d)
-    r = ui.Rich().h(T(f"domain.{dom.value}", lang), 2)
+    head = f"{ui.icon(dom)} {T(f'domain.{dom.value}', lang)}"
+    r = ui.Rich().h(head, 2)
+    order = STEPS[dom]
+    at = "day" if step == "cal" else step
+    pos = order.index(at) if at in order else len(order) - 1
+    r.p(f"<code>{ui.progress(pos + 1, len(order))}</code> <i>{T('sb.step', lang, n=pos + 1, total=len(order))}</i>")
     rows = summary_rows(d, lang, clock)
     if rows:
         r.table(rows, striped=False, compact=True)
     prompt = T(f"sb.ask.{step}", lang)
     r.p(f"<b>{prompt}</b>")
-    fallback = (
-        f"<b>{T(f'domain.{dom.value}', lang)}</b>\n" + "\n".join(f"{a}: {b}" for a, b in rows) + f"\n\n<b>{prompt}</b>"
-    )
+    body = "\n".join(f"{a}: {b}" for a, b in rows)
+    fallback = f"<b>{head}</b> {ui.progress(pos + 1, len(order))}\n{body}\n\n<b>{prompt}</b>"
     return r, fallback, keyboard(step, d, user, current)
 
 
@@ -150,13 +154,19 @@ def keyboard(step: str, d: dict[str, Any], user: User, current: dict[str, Any] |
             (cat_label(c, lang), cb("cat", c), "primary" if d.get("cat") == c else None)
             for c in CATEGORIES.get(dom, [])
         ]
-        rows = _grid(items, 2 if dom in (Domain.PLAN,) else 3)
+        rows = _grid(items, 2 if dom in (Domain.PLAN, Domain.ESSENTIALS) else 3)
     elif step in ("city", "origin", "dest"):
         ps = places(user, current)
-        items = [(p["name"][:30], cb(step, str(i)), None) for i, p in enumerate(ps)]
-        rows = _grid(items, 3)
+        items = [
+            (f"📍 {p['name'][:28]}" if i == 0 and current else p["name"][:30], cb(step, str(i)), None)
+            for i, p in enumerate(ps)
+        ]
+        rows = _grid(items, 2)
         rows.append(
-            [(T("sb.near_me", lang), cb(step, "near"), None), (T("sb.other_city", lang), cb(step, "type"), None)]
+            [
+                (f"📡 {T('sb.near_me', lang)}", cb(step, "near"), "success"),
+                (f"⌨ {T('sb.other_city', lang)}", cb(step, "type"), None),
+            ]
         )
     elif step == "day":
         z = tz(user.timezone)
@@ -214,10 +224,10 @@ def keyboard(step: str, d: dict[str, Any], user: User, current: dict[str, Any] |
                 for m in SORTS[dom.is_transport]
             ]
         )
-        rows.append([(T("search.go", lang), cb("go"), "success")])
+        rows.append([(f"🔎 {T('search.go', lang)}", cb("go"), "success")])
     nav: list[tuple[str, str, str | None]] = [
-        (T("common.back", lang), cb("back"), None),
-        (T("common.cancel", lang), cb("x"), "danger"),
+        (f"‹ {T('common.back', lang)}", cb("back"), None),
+        (f"✕ {T('common.cancel', lang)}", cb("x"), "danger"),
     ]
     rows.append(nav)
     return ui.kb(rows)
@@ -234,14 +244,14 @@ def calendar_rows(month: str, user: User) -> list[list[tuple[str, str, str | Non
     can_prev = (y, m) > (today.year, today.month)
     rows.append(
         [
-            ("<", cb("cal", prev_m) if can_prev else cb("noop"), None),
-            (i18n.fdate(first, lang, "LLLL y"), cb("noop"), None),
-            (">", cb("cal", next_m), None),
+            ("‹", cb("cal", prev_m) if can_prev else cb("noop"), None if can_prev else "disabled"),
+            (i18n.fdate(first, lang, "LLLL y"), cb("noop"), "disabled"),
+            ("›", cb("cal", next_m), None),
         ]
     )
     rows.append(
         [
-            (i18n.fdate(first + timedelta(days=(i - first.weekday()) % 7), lang, "EEEEE"), cb("noop"), None)
+            (i18n.fdate(first + timedelta(days=(i - first.weekday()) % 7), lang, "EEEEE"), cb("noop"), "disabled")
             for i in range(7)
         ]
     )
@@ -249,11 +259,11 @@ def calendar_rows(month: str, user: User) -> list[list[tuple[str, str, str | Non
         row: list[tuple[str, str, str | None]] = []
         for dnum in week:
             if dnum == 0:
-                row.append((" ", cb("noop"), None))
+                row.append((" ", cb("noop"), "disabled"))
                 continue
             dd = date(y, m, dnum)
             if dd < today:
-                row.append((str(dnum), cb("noop"), None))
+                row.append((str(dnum), cb("noop"), "disabled"))
             else:
                 row.append((str(dnum), cb("day", dd.isoformat()), "primary" if dd == today else None))
         rows.append(row)
@@ -288,28 +298,33 @@ def home(
 ) -> tuple[ui.Rich, str, InlineKeyboardMarkup]:
     lang = user.language
     city = (user.home_place or {}).get("name")
-    r = ui.Rich().h("RADAR", 1).p(f"<i>{T('home.tagline', lang)}</i>")
+    r = ui.Rich().h("📡 RADAR", 1).p(f"<i>{T('home.tagline', lang)}</i>")
     if city:
-        r.p(T("home.city", lang, city=ui.esc(city)))
+        r.p(f"📍 {T('home.city', lang, city=ui.esc(city))}")
     r.p(T("home.hint", lang))
+    rows: list[list[tuple[str, str, str | None]]] = [
+        [
+            (f"🧳 {T('home.travel', lang)}", "tv:home:", "success"),
+            (f"📡 {T('home.near_me_now', lang)}", cb("near"), "success"),
+        ]
+    ]
     items = [
         (
-            T(f"domain.{d.value}", lang),
+            f"{ui.icon(d)} {T(f'domain.{d.value}', lang)}",
             cb("dom", d.value),
-            "primary" if d in (Domain.DINING, Domain.STAY, Domain.RAIL) else None,
+            "primary" if d in (Domain.DINING, Domain.STAY, Domain.FLIGHT) else None,
         )
         for d in GRID
     ]
-    rows = _grid(items, 3)
-    rows.append([(T("home.near_me_now", lang), cb("near"), "success")])
+    rows += _grid(items, 2)
     if recent:
         r.h(T("home.recent", lang), 4)
         for sid, label in recent:
-            rows.append([(label, cb("rerun", str(sid)), None)])
+            rows.append([(f"↻ {label}", cb("rerun", str(sid)), None)])
     rows.append(
         [
-            (T("menu.radars", lang), kb.MenuCb(a="radars").pack(), None),
-            (T("menu.settings", lang), kb.MenuCb(a="settings").pack(), None),
+            (f"🔔 {T('menu.radars', lang)}", kb.MenuCb(a="radars").pack(), None),
+            (f"⚙ {T('menu.settings', lang)}", kb.MenuCb(a="settings").pack(), None),
         ]
     )
     markup = ui.kb(rows)

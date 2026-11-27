@@ -40,6 +40,15 @@ class DayForecast:
         return not (self.precip_probability is not None and self.precip_probability >= 60)
 
 
+@dataclass(frozen=True)
+class CurrentWeather:
+    condition: str
+    temperature: float | None
+    feels_like: float | None
+    wind_kmh: float | None
+    is_day: bool
+
+
 class WeatherService:
     commercial_use_allowed = False
 
@@ -79,6 +88,29 @@ class WeatherService:
                 )
             )
         return out
+
+    async def current(self, point: GeoPoint) -> CurrentWeather | None:
+        params = {
+            "latitude": f"{point.lat:.4f}",
+            "longitude": f"{point.lon:.4f}",
+            "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
+            "timezone": "auto",
+        }
+        try:
+            data = await self.http.get_json(f"{get_settings().open_meteo_url}/v1/forecast", params=params)
+        except ProviderError:
+            return None
+        cur = (data or {}).get("current") or {}
+        if not cur:
+            return None
+        code = cur.get("weather_code")
+        return CurrentWeather(
+            condition=_WMO.get(int(code), "unknown") if code is not None else "unknown",
+            temperature=cur.get("temperature_2m"),
+            feels_like=cur.get("apparent_temperature"),
+            wind_kmh=cur.get("wind_speed_10m"),
+            is_day=bool(cur.get("is_day", 1)),
+        )
 
     async def aclose(self) -> None:
         await self.http.aclose()

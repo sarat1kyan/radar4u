@@ -100,11 +100,12 @@
     realestate: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10M10 20v-5h4v5"/>',
     plan: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>',
     shopping: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+    essentials: '<rect x="3" y="7" width="18" height="13" rx="3"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M12 11v5M9.5 13.5h5"/>',
   };
   const GRAD = {
     dining: "#ff7a45,#ff4d6d", stay: "#7c5cff,#4f7cff", rail: "#00b386,#00a3ff", flight: "#3a8bff,#6a5cff",
     event: "#ff4d97,#ff8a3d", wellness: "#22c1a1,#5ad17a", ground: "#ffb020,#ff7a45", realestate: "#5b6cff,#8f5cff",
-    plan: "#0bb3c4,#3a8bff", shopping: "#ff8a3d,#ffb020",
+    plan: "#0bb3c4,#3a8bff", shopping: "#ff8a3d,#ffb020", essentials: "#ff5a5f,#ff9f43",
   };
   const svgIcon = (inner) => {
     const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");

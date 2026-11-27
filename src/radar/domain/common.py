@@ -19,11 +19,17 @@ class Domain(StrEnum):
     EVENT = "event"
     WELLNESS = "wellness"
     SHOPPING = "shopping"
+    ESSENTIALS = "essentials"
     PLAN = "plan"
 
     @property
     def is_transport(self) -> bool:
         return self in {Domain.FLIGHT, Domain.RAIL, Domain.GROUND}
+
+    @property
+    def is_venue(self) -> bool:
+        """Places you walk into: opening hours and distance matter most."""
+        return self in {Domain.DINING, Domain.WELLNESS, Domain.EVENT, Domain.SHOPPING, Domain.ESSENTIALS}
 
 
 class GeoPoint(BaseModel):

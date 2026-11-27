@@ -171,7 +171,8 @@ def evaluate(result: Result, intent: SearchIntent, converted: Money | None = Non
         rep.add(c.key, constraint_tri(result, c, intent), preference=True)
 
     if (
-        intent.domain in (Domain.DINING, Domain.WELLNESS)
+        intent.domain.is_venue
+        and intent.domain is not Domain.EVENT
         and intent.when
         and _has_clock_time(intent.when.start)
         and not intent.has_requirement("open_at")

@@ -109,6 +109,7 @@ def _categories(text: str, domain: Domain | None) -> list[str]:
     prefix_by_domain = {
         Domain.DINING: ("cuisine:", "place:cafe", "place:bar", "place:pub", "place:bakery", "place:brunch"),
         Domain.WELLNESS: ("place:",),
+        Domain.ESSENTIALS: ("place:",),
         Domain.EVENT: ("event:",),
         Domain.STAY: (
             "property:hotel",
@@ -584,6 +585,7 @@ def parse(
     if re.search(L.OPEN_NOW, text, FLAGS) and working_domain in (
         Domain.DINING,
         Domain.WELLNESS,
+        Domain.ESSENTIALS,
         Domain.EVENT,
         Domain.SHOPPING,
     ):

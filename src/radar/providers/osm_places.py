@@ -79,7 +79,37 @@ SELECTORS: dict[str, list[str]] = {
     "property:apartment": ['["tourism"="apartment"]'],
     "property:aparthotel": ['["tourism"="apartment"]', '["tourism"="hotel"]["hotel"="aparthotel"]'],
     "stay:*": ['["tourism"~"^(hotel|hostel|guest_house|apartment|motel)$"]'],
+    "event:sights": [
+        '["tourism"~"^(attraction|viewpoint|museum|gallery)$"]',
+        '["historic"~"^(monument|castle|memorial|ruins|archaeological_site|fort)$"]',
+    ],
     "event:*": ['["tourism"~"^(museum|gallery|theme_park)$"]', '["amenity"~"^(theatre|cinema|arts_centre)$"]'],
+    # travel essentials (many are unnamed in OSM; see NAME_OPTIONAL)
+    "place:pharmacy": ['["amenity"="pharmacy"]', '["healthcare"="pharmacy"]'],
+    "place:atm": ['["amenity"="atm"]', '["amenity"="bank"]["atm"="yes"]'],
+    "place:exchange": ['["amenity"="bureau_de_change"]'],
+    "place:supermarket": ['["shop"~"^(supermarket|convenience)$"]'],
+    "place:hospital": ['["amenity"~"^(hospital|clinic)$"]', '["healthcare"~"^(hospital|clinic)$"]'],
+    "place:police": ['["amenity"="police"]'],
+    "place:toilets": ['["amenity"="toilets"]'],
+    "place:fuel": ['["amenity"="fuel"]', '["amenity"="charging_station"]'],
+    "place:embassy": ['["office"="diplomatic"]', '["amenity"="embassy"]', '["diplomatic"="embassy"]'],
+    "place:sim": ['["shop"="mobile_phone"]', '["shop"="telecommunication"]'],
+    "place:laundry": ['["shop"~"^(laundry|dry_cleaning)$"]'],
+    "essentials:*": ['["amenity"~"^(pharmacy|atm|bureau_de_change)$"]', '["shop"="supermarket"]'],
+}
+
+# Selectors whose objects are often unnamed but still useful (an ATM, a public toilet).
+NAME_OPTIONAL = frozenset({"place:atm", "place:toilets", "place:exchange", "place:fuel", "place:pharmacy"})
+
+KIND_FALLBACK = {
+    "atm": "ATM",
+    "bank": "Bank",
+    "toilets": "Toilets",
+    "bureau_de_change": "Currency exchange",
+    "fuel": "Fuel",
+    "charging_station": "Charging station",
+    "pharmacy": "Pharmacy",
 }
 
 ATTRIBUTE_TAGS: dict[str, tuple[str, ...]] = {
@@ -118,12 +148,14 @@ def build_query(intent: SearchIntent, lat: float, lon: float, radius_m: int, lim
             Domain.WELLNESS: ["wellness:*"],
             Domain.EVENT: ["event:*"],
             Domain.STAY: ["stay:*"],
+            Domain.ESSENTIALS: ["essentials:*"],
         }.get(intent.domain, ["dining:*"])
     cuisine = _cuisine_filter(cats) if intent.domain is Domain.DINING else ""
     clauses = []
     for key in keys:
         for sel in SELECTORS[key]:
-            clauses.append(f'  nw{sel}{cuisine}["name"];')
+            named = "" if key in NAME_OPTIONAL else '["name"]'
+            clauses.append(f"  nw{sel}{cuisine}{named};")
     if intent.domain is Domain.DINING and cuisine and not any(k.startswith("place:") for k in keys):
         clauses = [f'  nw["amenity"~"^(restaurant|cafe|fast_food)$"]{cuisine}["name"];']
     body = "\n".join(dict.fromkeys(clauses))
@@ -182,8 +214,14 @@ def element_to_result(el: dict[str, Any], intent: SearchIntent, lang: str, origi
     tags: dict[str, str] = el.get("tags") or {}
     lat = el.get("lat") or (el.get("center") or {}).get("lat")
     lon = el.get("lon") or (el.get("center") or {}).get("lon")
-    if lat is None or lon is None or "name" not in tags:
+    if lat is None or lon is None:
         return None
+    kind = tags.get("amenity") or tags.get("shop") or tags.get("leisure") or tags.get("tourism") or tags.get("craft")
+    if "name" not in tags:
+        fallback = tags.get("brand") or tags.get("operator") or KIND_FALLBACK.get(kind or "")
+        if intent.domain is not Domain.ESSENTIALS or not fallback:
+            return None
+        tags = {**tags, "name": fallback}
     point = GeoPoint(lat=float(lat), lon=float(lon))
     osm_ref = f"{el.get('type', 'node')}/{el.get('id')}"
     attrs = {k: Tri.from_osm(next((tags[t] for t in ts if t in tags), None)) for k, ts in ATTRIBUTE_TAGS.items()}
@@ -209,7 +247,8 @@ def element_to_result(el: dict[str, Any], intent: SearchIntent, lang: str, origi
     links.append(Link(kind=LinkKind.SOURCE, url=f"https://www.openstreetmap.org/{osm_ref}", label="OpenStreetMap"))
 
     cuisines = [c.strip() for c in tags.get("cuisine", "").split(";") if c.strip()]
-    kind = tags.get("amenity") or tags.get("shop") or tags.get("leisure") or tags.get("tourism") or tags.get("craft")
+    if tags.get("office") == "diplomatic" or tags.get("healthcare"):
+        kind = kind or tags.get("office") or tags.get("healthcare")
     facts: dict[str, Any] = {
         "kind": kind,
         "cuisine": cuisines,
@@ -262,6 +301,7 @@ class OsmPlacesProvider(Provider):
     capabilities = (
         Capability(Domain.DINING, monitoring_allowed=True, min_monitor_interval_s=86400, cost_units=0.5),
         Capability(Domain.WELLNESS, monitoring_allowed=True, min_monitor_interval_s=86400, cost_units=0.5),
+        Capability(Domain.ESSENTIALS, monitoring_allowed=False, cost_units=0.5),
         Capability(Domain.EVENT, monitoring_allowed=False, cost_units=0.5),
         Capability(Domain.STAY, monitoring_allowed=False, cost_units=0.5),
     )
@@ -280,6 +320,28 @@ class OsmPlacesProvider(Provider):
         self.hedge_after_s = 2.5
         self.cache_ttl_s = cache_ttl_s
         self._cache: OrderedDict[str, tuple[float, list[dict[str, Any]]]] = OrderedDict()
+        self._coverage: dict[str, bool] = {}
+
+    async def _covers(self, url: str, at: GeoPoint) -> bool | None:
+        """Does this mirror hold data around `at`? Some public mirrors carry a regional extract only and
+        give partial, misleading answers near its edge (a Turkish airport, but not the Armenian one 10 km
+        away). One tiny probe per mirror and 1-degree cell, remembered for a week. None means unknown."""
+        cell = f"{round(at.lat)}:{round(at.lon)}"
+        key = f"cov:{url}:{cell}"
+        if key in self._coverage:
+            return self._coverage[key]
+        stored = await self.store.get(key, 7 * 86400)
+        if isinstance(stored, bool):
+            self._coverage[key] = stored
+            return stored
+        probe = f"[out:json][timeout:8];node(around:5000,{at.lat:.4f},{at.lon:.4f});out ids 1;"
+        try:
+            found = bool(await asyncio.wait_for(self._one(url, probe), 6))
+        except (ProviderError, TimeoutError):
+            return None
+        self._coverage[key] = found
+        await self.store.set(key, found)
+        return found
 
     async def _one(self, url: str, query: str) -> list[dict[str, Any]]:
         resp = await self._client(url).request("POST", url, data={"data": query}, retry_on_post=False)
@@ -293,7 +355,7 @@ class OsmPlacesProvider(Provider):
             raise ProviderError(self.name, "Overpass query did not complete", retryable=True)
         return list(elements)
 
-    async def _fetch(self, query: str) -> list[dict[str, Any]]:
+    async def _fetch(self, query: str, at: GeoPoint | None = None) -> list[dict[str, Any]]:
         """Memory cache -> disk cache -> hedged request across mirrors (first good answer wins)."""
         key = hashlib.sha256(query.encode()).hexdigest()
         hit = self._cache.get(key)
@@ -309,6 +371,12 @@ class OsmPlacesProvider(Provider):
             urls.insert(0, self._preferred)
         if not urls:
             raise ProviderError(self.name, "all Overpass mirrors are cooling down", code="circuit_open")
+        if at is not None and len(urls) > 1:
+            cover = await asyncio.gather(*(self._covers(u, at) for u in urls))
+            # Known-blind mirrors are dropped; if every probe says "nothing here" (open sea, desert)
+            # keep the list as it was rather than refusing to answer.
+            kept = [u for u, c in zip(urls, cover, strict=True) if c is not False]
+            urls = kept or urls
         last: BaseException | None = None
         empty_ok = False
         pending: set[asyncio.Task[list[dict[str, Any]]]] = set()
@@ -349,6 +417,27 @@ class OsmPlacesProvider(Provider):
             raise last
         raise ProviderError(self.name, "no Overpass mirror answered")
 
+    async def nearest(self, point: GeoPoint, selector: str, radius_m: int, limit: int = 30) -> list[dict[str, Any]]:
+        """Raw elements matching one Overpass selector around a point, nearest first.
+
+        Used by travel mode to find the closest airport or station without a full search.
+        """
+        s_, w_, n_, e_ = bbox_around(point.lat, point.lon, radius_m)
+        query = (
+            f"[out:json][timeout:15][bbox:{s_:.5f},{w_:.5f},{n_:.5f},{e_:.5f}];\n"
+            f"(\n  nwr{selector};\n);\nout center tags {limit};"
+        )
+        out: list[dict[str, Any]] = []
+        for el in await self._fetch(query, point):
+            lat = el.get("lat") or (el.get("center") or {}).get("lat")
+            lon = el.get("lon") or (el.get("center") or {}).get("lon")
+            if lat is None or lon is None:
+                continue
+            pt = GeoPoint(lat=float(lat), lon=float(lon))
+            out.append({"tags": el.get("tags") or {}, "point": pt, "distance_m": point.distance_m(pt)})
+        out.sort(key=lambda x: x["distance_m"])
+        return out
+
     async def search(self, intent: SearchIntent, ctx: SearchContext) -> list[Result]:
         ref = intent.location or intent.destination
         if ref is None or ref.place is None:
@@ -357,11 +446,11 @@ class OsmPlacesProvider(Provider):
         radius = ref.radius_m or (2500 if ref.place.kind.value in ("district", "poi", "address") else 5000)
         radius = max(300, min(radius, 25_000))
         limit = min(150, ctx.max_results * 4)
-        elements = await self._fetch(build_query(intent, center.lat, center.lon, radius, limit=limit))
+        elements = await self._fetch(build_query(intent, center.lat, center.lon, radius, limit=limit), center)
         if len(elements) < 6 and not ref.radius_m and radius < 25_000:
             # Sparse area or rare category: widen once instead of returning almost nothing.
             radius = min(25_000, radius * 3)
-            elements = await self._fetch(build_query(intent, center.lat, center.lon, radius, limit=limit))
+            elements = await self._fetch(build_query(intent, center.lat, center.lon, radius, limit=limit), center)
         out: list[Result] = []
         seen: set[str] = set()
         for el in elements:

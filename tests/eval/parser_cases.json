@@ -338,5 +338,37 @@
    "place:cafe",
    "near:me"
   ]
+ },
+ {
+  "text": "pharmacy in Tbilisi open now",
+  "domain": "essentials",
+  "location": "Tbilisi",
+  "categories": [
+   "place:pharmacy"
+  ]
+ },
+ {
+  "text": "банкомат в Ереване",
+  "domain": "essentials",
+  "location": "Yerevan",
+  "categories": [
+   "place:atm"
+  ]
+ },
+ {
+  "text": "обмен валют в Алматы",
+  "domain": "essentials",
+  "location": "Almaty",
+  "categories": [
+   "place:exchange"
+  ]
+ },
+ {
+  "text": "Sehenswürdigkeiten in Batumi",
+  "domain": "event",
+  "location": "Batumi",
+  "categories": [
+   "event:sights"
+  ]
  }
 ]

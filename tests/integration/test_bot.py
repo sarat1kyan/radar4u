@@ -247,3 +247,71 @@ async def _fake_reverse(lat, lon, language="en"):
     from radar.geo.resolver import GAZ
 
     return GAZ.lookup("Yerevan").to_place()
+
+
+async def _fake_current(point):
+    from radar.providers.weather import CurrentWeather
+
+    return CurrentWeather(condition="rain", temperature=12.0, feels_like=9.0, wind_kmh=20, is_day=True)
+
+
+def _seed_fx(app):
+    from decimal import Decimal
+
+    rates = {"EUR": Decimal(1), "USD": Decimal("1.08"), "AMD": Decimal("420.5")}
+    app.fx.seed("ecb", rates, datetime.now(UTC))
+
+
+async def test_location_opens_travel_dashboard_and_quick_actions(harness):
+    app, session, send_text, press = harness
+    app.resolver.reverse = _fake_reverse
+    app.weather.current = _fake_current
+    _seed_fx(app)
+    await send_text.location(40.1811, 44.5136)
+    dash = session.texts()[-1]
+    assert "Local time" in dash and "911" in dash and "AMD" in dash and "12°" in dash and "<tg-map" in dash
+    btns = buttons(markups(session)[-1])
+    sos = next(b for b in btns if b.copy_text is not None)
+    assert sos.copy_text.text == "911" and sos.style == "danger"
+    pharmacy = next(b for b in btns if b.callback_data == "tv:q:pharmacy")
+    await press(pharmacy.callback_data)
+    # fixtures-only registry: no source covers essentials, and the bot says so honestly
+    assert "None of my connected providers cover this request yet" in session.texts()[-1]
+    await press("tv:q:hotel")
+    assert session.texts()[-1].startswith("<h3>Hotels and stays")
+
+
+async def test_travel_button_without_location_asks_then_runs(harness):
+    app, session, send_text, press = harness
+    app.resolver.reverse = _fake_reverse
+    app.weather.current = _fake_current
+    _seed_fx(app)
+    await press("m:home")
+    travel_btn = next(b for b in buttons(markups(session)[-1]) if b.callback_data == "tv:home:")
+    await press(travel_btn.callback_data)
+    assert "Share your location" in session.texts()[-1]
+    await send_text.location(40.1811, 44.5136)
+    assert "Local time" in session.texts()[-1]
+
+
+async def test_currency_conversion_text(harness):
+    app, session, send_text, press = harness
+    _seed_fx(app)
+    await send_text("100 usd to eur")
+    out = session.texts()[-1]
+    assert "92.59" in out and "€" in out
+    await press("tv:fx:")
+    assert "Send an amount" in session.texts()[-1]
+    await send_text("50")
+    assert "€" in session.texts()[-1] or "$" in session.texts()[-1]
+
+
+async def test_result_buttons_named_and_pager(harness):
+    app, session, send_text, press = harness
+    await send_text("hotel in Berlin from December 21 to December 23")
+    btns = buttons(markups(session)[-1])
+    first = next(b for b in btns if b.callback_data and b.callback_data.startswith("r:d:"))
+    assert first.text.startswith("➊ ") and len(first.text) > 4
+    disabled = [b for b in btns if b.disabled is not None]
+    if disabled:  # more than one page: indicator and the impossible "previous" are greyed out
+        assert any("/" in b.text for b in disabled)

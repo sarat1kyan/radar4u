@@ -40,7 +40,7 @@ def _d(*ds: Domain) -> frozenset[Domain]:
     return frozenset(ds)
 
 
-_PLACES = _d(D.DINING, D.WELLNESS, D.EVENT, D.SHOPPING)
+_PLACES = _d(D.DINING, D.WELLNESS, D.EVENT, D.SHOPPING, D.ESSENTIALS)
 
 CONSTRAINTS: dict[str, ConstraintDef] = {
     c.key: c

@@ -65,7 +65,7 @@ def _meta(r: Ranked, intent: SearchIntent, lang: str, clock: str) -> list[str]:
         bits.append(i18n.distance(res.distance_m, lang))
     if res.starts_at and intent.domain is Domain.EVENT:
         bits.append(i18n.fdatetime(res.starts_at, lang, clock))
-    venue = intent.domain in (Domain.DINING, Domain.WELLNESS, Domain.EVENT, Domain.SHOPPING) and not res.legs
+    venue = intent.domain.is_venue and not res.legs
     if venue and (label := status_label(r, intent, lang, clock)) is not None:
         bits.append(label)
     if res.rating:
@@ -73,6 +73,49 @@ def _meta(r: Ranked, intent: SearchIntent, lang: str, clock: str) -> list[str]:
     if isinstance(res.facts.get("stars"), int):
         bits.append(T("result.stars", lang, count=res.facts["stars"]))
     return bits
+
+
+NUM = "➊➋➌➍➎➏➐➑➒➓"
+
+
+def directions_url(intent: SearchIntent) -> str | None:
+    """Door-to-door directions for ground trips, handy where no timetable source covers the city."""
+    if intent.domain is not Domain.GROUND:
+        return None
+    o = intent.origin.place if intent.origin else None
+    d = intent.destination.place if intent.destination else None
+    if o is None or d is None:
+        return None
+    src = quote(f"{o.point.lat:.6f},{o.point.lon:.6f}")
+    dst = quote(f"{d.point.lat:.6f},{d.point.lon:.6f}")
+    return f"https://www.google.com/maps/dir/?api=1&origin={src}&destination={dst}&travelmode=transit"
+
+
+def result_button(n: int, item: Ranked, intent: SearchIntent, lang: str, clock: str) -> str:
+    """One line per result: number, name and the one fact that matters most for this kind of search."""
+    res = item.result
+    mark = NUM[n - 1] if 0 < n <= len(NUM) else f"{n}."
+    if res.legs or intent.domain.is_transport:
+        dep = i18n.ftime(res.starts_at, lang, clock) if res.starts_at else "?"
+        arr = i18n.ftime(res.ends_at, lang, clock) if res.ends_at else "?"
+        bits = [f"{dep} → {arr}", render._duration(res.duration_min, lang)]
+        if (pt := render.price_text(item, lang)) is not None:
+            bits.append(pt)
+        return f"{mark} " + " · ".join(b for b in bits if b)
+    bits = [res.title[:34]]
+    if intent.domain.is_venue:
+        state, _ = open_status(res, reference_time(intent))
+        if state in ("open", "24_7"):
+            bits.append("🟢")
+        elif state == "closed":
+            bits.append("🔴")
+    if res.distance_m is not None:
+        bits.append(i18n.distance(res.distance_m, lang))
+    elif (pt := render.price_text(item, lang)) is not None:
+        bits.append(pt)
+    if item.tier is Tier.ALTERNATIVE:
+        bits.append("≈")
+    return f"{mark} " + " · ".join(bits)
 
 
 def results_view(
@@ -90,7 +133,7 @@ def results_view(
         return r, fallback, ui.kb([[(T("search.new", lang), kb.MenuCb(a="home").pack(), "primary")]])
     if not o.ranked:
         r.p(T("search.no_results", lang))
-    elif intent.domain in (Domain.DINING, Domain.WELLNESS) and page == 0:
+    elif intent.domain.is_venue and page == 0:
         at = reference_time(intent)
         n_open = sum(1 for i in o.ranked if open_status(i.result, at)[0] in ("open", "24_7"))
         if n_open:
@@ -149,32 +192,39 @@ def results_view(
     if notes:
         r.footer("<br>".join(notes))
 
-    nums = [
-        (str(n), kb.ResultCb(a="d", s=sid, i=i.result.id).pack(), "primary" if i.tier is Tier.EXACT else None)
+    kb_rows: list[list[tuple[str, str, str | None]]] = [
+        [(result_button(n, i, intent, lang, clock), kb.ResultCb(a="d", s=sid, i=i.result.id).pack(), None)]
         for n, i in enumerate(chunk, start=page * PAGE + 1)
     ]
-    kb_rows: list[list[tuple[str, str, str | None]]] = [nums] if nums else []
-    nav: list[tuple[str, str, str | None]] = []
-    if page > 0:
-        nav.append(("<", kb.PageCb(s=sid, p=page - 1).pack(), None))
-    if page + 1 < pages:
-        nav.append((T("search.more", lang), kb.PageCb(s=sid, p=page + 1).pack(), None))
-    if nav:
-        kb_rows.append(nav)
-    kb_rows.append(
-        [
-            (T("search.sort", lang), kb.SortCb(s=sid, m="").pack(), None),
-            (T("search.watch", lang), kb.WatchCb(s=sid, k="").pack(), "success"),
-        ]
-    )
+    if pages > 1:
+        prev_ = kb.PageCb(s=sid, p=page - 1).pack() if page > 0 else "noop"
+        next_ = kb.PageCb(s=sid, p=page + 1).pack() if page + 1 < pages else "noop"
+        kb_rows.append(
+            [
+                ("‹", prev_, None if page > 0 else "disabled"),
+                (f"{page + 1} / {pages}", "noop", "disabled"),
+                ("›", next_, None if page + 1 < pages else "disabled"),
+            ]
+        )
     if transport:
         kb_rows.append(
-            [(T("search.earlier", lang), f"tp:{sid}:-", None), (T("search.later", lang), f"tp:{sid}:+", None)]
+            [
+                (f"⏪ {T('search.earlier', lang)}", f"tp:{sid}:-", None),
+                (f"{T('search.later', lang)} ⏩", f"tp:{sid}:+", None),
+            ]
         )
+    if (maps := directions_url(intent)) is not None:
+        kb_rows.append([(f"🗺 {T('travel.open_maps', lang)}", maps, None if o.ranked else "primary")])
     kb_rows.append(
         [
-            (T("search.edit", lang), f"sb:edit:{sid}", "primary"),
-            (T("search.new", lang), kb.MenuCb(a="home").pack(), None),
+            (f"⇅ {T('search.sort', lang)}", kb.SortCb(s=sid, m="").pack(), None),
+            (f"🔔 {T('search.watch', lang)}", kb.WatchCb(s=sid, k="").pack(), "success"),
+        ]
+    )
+    kb_rows.append(
+        [
+            (f"✎ {T('search.edit', lang)}", f"sb:edit:{sid}", "primary"),
+            (f"🏠 {T('search.new', lang)}", kb.MenuCb(a="home").pack(), None),
         ]
     )
     return r, fallback, ui.kb(kb_rows)
@@ -301,7 +351,8 @@ def card_view(
     rows: list[list[tuple[str, str, str | None]]] = []
     links: list[tuple[str, str, str | None]] = []
     if res.booking is BookingMode.DIRECT:
-        links.append((T("result.book", lang), kb.ResultCb(a="b", s=sid, i=res.id).pack(), "success"))
+        links.append((f"✅ {T('result.book', lang)}", kb.ResultCb(a="b", s=sid, i=res.id).pack(), "success"))
+    icons = {LinkKind.BOOKING: "🎫", LinkKind.WEBSITE: "🌐", LinkKind.MENU: "📖"}
     for kind, key in (
         (LinkKind.BOOKING, "result.book"),
         (LinkKind.WEBSITE, "result.website"),
@@ -309,22 +360,28 @@ def card_view(
     ):
         link = res.link(kind)
         if link and link.url.startswith("https://"):
-            links.append((T(key, lang), link.url, "primary" if kind is LinkKind.BOOKING else None))
+            links.append((f"{icons[kind]} {T(key, lang)}", link.url, "primary" if kind is LinkKind.BOOKING else None))
     if links:
-        rows.append(links[:3])
+        rows.append(links[:2])
+        if links[2:]:
+            rows.append(links[2:3])
     row2: list[tuple[str, str, str | None]] = []
     if res.point is not None:
         dest = quote(f"{res.point.lat:.6f},{res.point.lon:.6f}")
-        row2.append((T("card.route", lang), f"https://www.google.com/maps/dir/?api=1&destination={dest}", None))
+        row2.append(
+            (f"🧭 {T('card.route', lang)}", f"https://www.google.com/maps/dir/?api=1&destination={dest}", "primary")
+        )
     phone = res.link(LinkKind.PHONE)
     if phone:
-        row2.append((T("card.copy_phone", lang), "copy:" + phone.url.removeprefix("tel:"), None))
-    src_link = res.link(LinkKind.SOURCE)
-    if src_link and src_link.url.startswith("https://"):
-        row2.append((T("result.source_link", lang), src_link.url, None))
+        row2.append((f"📞 {T('card.copy_phone', lang)}", "copy:" + phone.url.removeprefix("tel:"), None))
     if row2:
         rows.append(row2)
-    rows.append([(T("search.watch", lang), kb.WatchCb(s=sid, k="").pack(), None)])
+    row3: list[tuple[str, str, str | None]] = [(f"‹ {T('card.back', lang)}", kb.PageCb(s=sid, p=0).pack(), None)]
+    src_link = res.link(LinkKind.SOURCE)
+    if src_link and src_link.url.startswith("https://"):
+        row3.append((f"ⓘ {T('result.source_link', lang)}", src_link.url, None))
+    row3.append((f"🔔 {T('search.watch', lang)}", kb.WatchCb(s=sid, k="").pack(), None))
+    rows.append(row3)
     return r, fallback, ui.kb(rows)
 
 

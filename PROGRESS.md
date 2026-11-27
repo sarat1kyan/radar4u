@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-26 (UI v2)
+Last updated: 2026-11-27 (travel mode, bot UI v3)
 
 ## Done and verified
 
@@ -21,6 +21,10 @@ Last updated: 2026-11-26 (UI v2)
 | Button-first search panel (category, place, calendar, time, guests, filters, sort) | end-to-end tests incl. the saved-city regression |
 | Rich-message UI (results, timetable tables, cards with map, photo, checklist; classic fallback) | e2e tests + sent live to Telegram and accepted (results, card, train table) |
 | Mini App v2 (tiles, builder, results map, detail sheets, radars, light/dark) | API tests + headless Chromium against the running API with live Transitous and OSM data |
+| Travel mode: location dashboard (local time, weather now, currency and rate, emergency numbers), one-tap essentials, route to airport/station/any place, currency converter | unit + e2e tests; live run in Yerevan (pharmacies, ATMs, exchange, sights, Zvartnots found) |
+| Essentials domain (pharmacy, ATM, exchange, supermarket, hospital, police, toilets, fuel, embassy, SIM, laundry) from OSM, unnamed ATMs/toilets kept with brand/operator | unit tests + parser regression cases |
+| Overpass mirror coverage probe (regional mirrors skipped outside their extract) | live check: Yerevan vs Berlin |
+| Bot UI v3: icons, step progress, named result buttons, disabled page indicator, card navigation | e2e tests |
 | Telegram bot flows | end-to-end tests through the real dispatcher with a fake Telegram session; live start against @radar4ubot (polling, commands registered in 9 languages) |
 | API + initData auth + Mini App | integration tests; Mini App rendered in headless Chromium against a running API |
 | Migrations | `alembic check` clean on SQLite and PostgreSQL |
@@ -31,6 +35,10 @@ Last updated: 2026-11-26 (UI v2)
 
 - **Mini App hosting**: Telegram opens Mini Apps only from a public HTTPS URL. Deploy the API (Docker) behind
   HTTPS and set `RADAR_WEBAPP_URL`; until then the bot works fully on its own.
+- **Local transit outside Transitous coverage** (e.g. Yerevan): no timetable results; the bot offers
+  door-to-door directions in Maps instead.
+- **Emergency numbers** are a checked static table for ~60 countries; elsewhere the bot says so and
+  suggests 112 from a mobile phone.
 - **Photos** appear only for venues that have a Wikimedia Commons image tagged in OpenStreetMap.
 
 - **Restaurant and appointment availability**: no public reservation API exists for the target markets.

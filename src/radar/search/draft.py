@@ -18,18 +18,33 @@ from radar.domain.vocabulary import CONSTRAINTS
 GRID: list[Domain] = [
     Domain.DINING,
     Domain.STAY,
-    Domain.RAIL,
     Domain.FLIGHT,
+    Domain.RAIL,
+    Domain.GROUND,
     Domain.EVENT,
     Domain.WELLNESS,
-    Domain.GROUND,
+    Domain.ESSENTIALS,
     Domain.REAL_ESTATE,
     Domain.PLAN,
 ]
 
 STEPS: dict[Domain, list[str]] = {
     Domain.DINING: ["cat", "city", "day", "time", "pax", "filters"],
+    Domain.ESSENTIALS: [
+        "place.pharmacy",
+        "place.atm",
+        "place.exchange",
+        "place.supermarket",
+        "place.hospital",
+        "place.police",
+        "place.toilets",
+        "place.fuel",
+        "place.embassy",
+        "place.sim",
+        "place.laundry",
+    ],
     Domain.WELLNESS: ["cat", "city", "day", "time", "filters"],
+    Domain.ESSENTIALS: ["cat", "city", "filters"],
     Domain.EVENT: ["cat", "city", "day", "filters"],
     Domain.STAY: ["cat", "city", "day", "nights", "pax", "filters"],
     Domain.RAIL: ["origin", "dest", "day", "time", "filters"],
@@ -73,6 +88,7 @@ CATEGORIES: dict[Domain, list[str]] = {
     ],
     Domain.EVENT: [
         "any",
+        "event.sights",
         "event.museum",
         "event.exhibition",
         "event.theatre",
@@ -100,6 +116,7 @@ FILTERS: dict[Domain, list[str]] = {
         "wifi",
     ],
     Domain.WELLNESS: ["wheelchair", "staff.female", "sauna", "pool"],
+    Domain.ESSENTIALS: ["wheelchair"],
     Domain.EVENT: ["wheelchair"],
     Domain.STAY: [
         "wifi",

@@ -203,6 +203,10 @@ DOMAIN_CUES: dict[Domain, list[tuple[str, float]]] = {
         (r"\bbateau\b", 2),
     ],
     Domain.EVENT: [
+        (
+            r"\bsights?\b|\bsightseeing\b|\battractions?\b|\blandmarks?\b|\bwhat to see\b|достопримечательност\w*|что посмотреть|տեսարժան\w*|ღირსშესანიშნაობ\w*|\bsehenswürdigkeit\w*|\bà voir\b|\bda vedere\b|\bqué ver\b",
+            4,
+        ),
         (r"\bconcerts?\b", 3),
         (r"\bfestivals?\b", 3),
         (r"\bcinema\b|\bmovies?\b", 3),
@@ -249,6 +253,40 @@ DOMAIN_CUES: dict[Domain, list[tuple[str, float]]] = {
         (r"\bmostra\b", 2.5),
         (r"\bexposición\b", 3),
         (r"\bteatro\b", 3),
+    ],
+    Domain.ESSENTIALS: [
+        (
+            r"\bpharmac\w*|\bchemist\b|\bdrugstore\b|аптек\w*|դեղատ\w*|აფთიაქ\w*|дәріхана\w*|\bapotheke\b|\bpharmacie\b|\bfarmaci\w*",
+            4,
+        ),
+        (
+            r"\batms?\b|\bcash machine\b|банкомат\w*|բանկոմատ\w*|ბანკომატ\w*|\bgeldautomat\w*|\bdistributeur\b|\bbancomat\b|\bcajero\b",
+            4,
+        ),
+        (
+            r"\bcurrency exchange\b|\bexchange office\b|\bbureau de change\b|обмен\w* валют|обменник\w*|փոխանակ\w*|\bwechselstube\b|\bcambio\b",
+            4,
+        ),
+        (
+            r"\bsupermarket\w*|\bgrocery\b|\bgroceries\b|супермаркет\w*|продуктов\w* магазин|սուպերմարկետ\w*|სუპერმარკეტ\w*|\bsupermarkt\b|\bsupermarché\b|\bsupermercado\b|\bsupermercato\b",
+            4,
+        ),
+        (
+            r"\bhospital\b|\bclinic\b|\bemergency room\b|\bdoctor\b|больниц\w*|клиник\w*|травмпункт|հիվանդանոց\w*|საავადმყოფო|\bkrankenhaus\b|\bklinik\b|\bhôpital\b|\bospedale\b|\bhospital\b",
+            4,
+        ),
+        (r"\bpolice\b|полици\w*|ոստիկան\w*|პოლიცი\w*|\bpolizei\b|\bpolizia\b|\bpolic[ií]a\b", 4),
+        (r"\btoilets?\b|\brestrooms?\b|\bwc\b|туалет\w*|զուգարան\w*|ტუალეტ\w*|\btoilette\w*|\bbaño\b|\bbagno\b", 4),
+        (
+            r"\bgas station\b|\bpetrol station\b|\bfuel\b|\bev charg\w*|заправк\w*|АЗС|բենզալցակայան\w*|\btankstelle\b|\bgasolinera\b|\bdistributore\b",
+            4,
+        ),
+        (
+            r"\bembass\w*|\bconsulate\b|посольств\w*|консульств\w*|դեսպանատ\w*|საელჩო|\bbotschaft\b|\bambassade\b|\bambasciata\b|\bembajada\b",
+            4,
+        ),
+        (r"\bsim card\b|\bsim\b|\bmobile operator\b|\besim\b|сим.?карт\w*|симк\w*|сим\b", 4),
+        (r"\blaundr\w*|\blaundromat\b|прачечн\w*|химчистк\w*|\bwäscherei\b|\blaverie\b|\blavander[ií]a\b", 4),
     ],
     Domain.WELLNESS: [
         (r"\bspas?\b", 3),
@@ -364,6 +402,42 @@ CATEGORY_CUES: list[tuple[str, str]] = [
     (r"\bpubs?\b|\bпаб\w*|\bkneipe\b", "place:pub"),
     (r"\bbaker(y|ies)\b|пекарн\w*|\bbäckerei\b|\bboulangerie\b|\bpanetteria\b|\bpanader[ií]a\b", "place:bakery"),
     (r"\bbrunch\w*", "place:brunch"),
+    # travel essentials
+    (
+        r"\bpharmac\w*|\bchemist\b|\bdrugstore\b|аптек\w*|դեղատ\w*|აფთიაქ\w*|дәріхана\w*|\bapotheke\b|\bpharmacie\b|\bfarmaci\w*",
+        "place:pharmacy",
+    ),
+    (
+        r"\batms?\b|\bcash machine\b|банкомат\w*|բանկոմատ\w*|ბანკომატ\w*|\bgeldautomat\w*|\bdistributeur\b|\bbancomat\b|\bcajero\b",
+        "place:atm",
+    ),
+    (
+        r"\bcurrency exchange\b|\bexchange office\b|\bbureau de change\b|обмен\w* валют|обменник\w*|փոխանակ\w*|\bwechselstube\b|\bcambio\b",
+        "place:exchange",
+    ),
+    (
+        r"\bsupermarket\w*|\bgrocery\b|\bgroceries\b|супермаркет\w*|продуктов\w* магазин|սուպերմարկետ\w*|სუპერმარკეტ\w*|\bsupermarkt\b|\bsupermarché\b|\bsupermercado\b|\bsupermercato\b",
+        "place:supermarket",
+    ),
+    (
+        r"\bhospital\b|\bclinic\b|\bemergency room\b|\bdoctor\b|больниц\w*|клиник\w*|травмпункт|հիվանդանոց\w*|საავადმყოფო|\bkrankenhaus\b|\bklinik\b|\bhôpital\b|\bospedale\b",
+        "place:hospital",
+    ),
+    (r"\bpolice\b|полици\w*|ոստիկան\w*|პოლიცი\w*|\bpolizei\b|\bpolizia\b|\bpolic[ií]a\b", "place:police"),
+    (
+        r"\btoilets?\b|\brestrooms?\b|\bwc\b|туалет\w*|զուգարան\w*|ტუალეტ\w*|\btoilette\w*|\bbaño\b|\bbagno\b",
+        "place:toilets",
+    ),
+    (
+        r"\bgas station\b|\bpetrol station\b|\bfuel\b|\bev charg\w*|заправк\w*|АЗС|բենզալցակայան\w*|\btankstelle\b|\bgasolinera\b|\bdistributore\b",
+        "place:fuel",
+    ),
+    (
+        r"\bembass\w*|\bconsulate\b|посольств\w*|консульств\w*|դեսպանատ\w*|საელჩო|\bbotschaft\b|\bambassade\b|\bambasciata\b|\bembajada\b",
+        "place:embassy",
+    ),
+    (r"\bsim card\b|\bsim\b|\bmobile operator\b|\besim\b|сим.?карт\w*|симк\w*", "place:sim"),
+    (r"\blaundr\w*|\blaundromat\b|прачечн\w*|химчистк\w*|\bwäscherei\b|\blaverie\b|\blavander[ií]a\b", "place:laundry"),
     # wellness
     (r"\bspas?\b|\bспа\b|\bսպա\b|სპა", "place:spa"),
     (r"\bmassage\w*|массаж\w*|մերսում\w*|მასაჟ\w*|\bmassaggio\b|\bmasaje\b", "place:massage"),
@@ -384,6 +458,10 @@ CATEGORY_CUES: list[tuple[str, str]] = [
     (r"\bfestivals?\b|фестивал\w*|\bfestival\b", "event:festival"),
     (r"\bcinema\b|\bmovies?\b|кино\w*|\bkino\b|\bcinéma\b|\bcine\b", "event:cinema"),
     (r"\btheat(er|re)\b|театр\w*|թատրոն\w*|თეატრ\w*|\bthéâtre\b|\bteatro\b", "event:theatre"),
+    (
+        r"\bsights?\b|\bsightseeing\b|\battractions?\b|\blandmarks?\b|\bwhat to see\b|достопримечательност\w*|что посмотреть|տեսարժան\w*|ღირსშესანიშნაობ\w*|\bsehenswürdigkeit\w*|\bà voir\b|\bda vedere\b|\bqué ver\b",
+        "event:sights",
+    ),
     (r"\bmuseums?\b|музе\w*|թանգարան\w*|მუზეუმ\w*|\bmusée\b|\bmuseo\b", "event:museum"),
     (
         r"\bexhibitions?\b|выставк\w*|ցուցահանդես\w*|გამოფენ\w*|\bausstellung\w*|\bexposition\b|\bmostra\b|"
